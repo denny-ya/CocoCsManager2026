@@ -1,98 +1,110 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { StyleSheet, View, FlatList, Image } from 'react-native';
+import { Text } from 'react-native-paper';
+import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { MenuCard } from '@/components/MenuCard';
+import { IconSymbolName } from '@/components/ui/icon-symbol';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+// 메뉴 데이터 정의
+const MENU_ITEMS: { id: string; title: string; icon: IconSymbolName; route: string }[] = [
+  { id: '1', title: '검색 BS\n& 재작업', icon: 'magnifyingglass', route: '/bs-search' },
+  { id: '2', title: '성과 & 통계', icon: 'chart.bar.fill', route: '/statistics' },
+  { id: '3', title: '매장 디렉토리', icon: 'map.fill', route: '/store-directory' },
+  { id: '4', title: '배차 리스트', icon: 'truck.fill', route: '/dispatch' },
+  { id: '5', title: '작업 가이드', icon: 'book.fill', route: '/work-guide' },
+];
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const router = useRouter();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  return (
+    <View style={styles.container}>
+      {/* 커스텀 헤더 영역 (SafeAreaView와 별도로 배경색 적용 위함) */}
+      <View style={styles.headerBackground}>
+        <SafeAreaView edges={['top']} style={styles.safeArea}>
+          <View style={styles.headerContent}>
+            <View>
+              <Text variant="headlineSmall" style={styles.headerTitle}>Coco CS Manager</Text>
+              <Text variant="bodyMedium" style={styles.headerSubtitle}>반갑습니다, 관리자님!</Text>
+            </View>
+            {/* 프로필 아이콘 자리 (임시) */}
+            <View style={styles.profileIcon} />
+          </View>
+        </SafeAreaView>
+      </View>
+
+      {/* 메인 컨텐츠 (그리드) */}
+      <View style={styles.content}>
+        <FlatList
+          data={MENU_ITEMS}
+          renderItem={({ item }) => (
+            <MenuCard
+              title={item.title}
+              icon={item.icon}
+              onPress={() => router.push(item.route as any)}
+            />
+          )}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          contentContainerStyle={styles.grid}
+          columnWrapperStyle={styles.columnWrapper}
+          showsVerticalScrollIndicator={false}
+        />
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF', // 전체 배경 화이트
+  },
+  headerBackground: {
+    backgroundColor: '#0051A2', // Primary Color
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  safeArea: {
+    backgroundColor: 'transparent',
+  },
+  headerContent: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  headerTitle: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  headerSubtitle: {
+    color: '#E3F2FD', // Primary Light
+    marginTop: 4,
+  },
+  profileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  content: {
+    flex: 1,
+    paddingTop: 24,
+  },
+  grid: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  columnWrapper: {
+    justifyContent: 'space-between',
   },
 });

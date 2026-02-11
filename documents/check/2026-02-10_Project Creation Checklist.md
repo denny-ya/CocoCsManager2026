@@ -117,11 +117,11 @@
 
 ## 6. 🚀 두 번째 커밋 및 Push (~3분)
 
-- [ ] **변경사항 확인**
+- [x] **변경사항 확인** ✅ 2026-02-11 완료
   ```powershell
   git status
   ```
-- [ ] **커밋 및 Push**
+- [x] **커밋 및 Push** ✅ 2026-02-11 완료 (v0.1.0)
   ```powershell
   git add .
   git commit -m "chore: Expo 프로젝트 생성 및 초기 환경 설정"

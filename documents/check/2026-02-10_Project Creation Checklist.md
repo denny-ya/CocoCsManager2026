@@ -36,15 +36,15 @@
 
 ## 2. 📦 Expo 프로젝트 생성 (~10분)
 
-- [ ] **Expo 프로젝트 생성**
+- [x] **Expo 프로젝트 생성** ✅ 2026-02-11 완료 (SDK 54)
   ```powershell
   npx create-expo-app mobile-app
   ```
-- [ ] **프로젝트 폴더로 이동**
+- [x] **프로젝트 폴더로 이동** ✅ 2026-02-11 완료
   ```powershell
   cd mobile-app
   ```
-- [ ] **개발 서버 실행 테스트** (정상 생성 확인 후 `Ctrl+C`로 종료)
+- [x] **개발 서버 실행 테스트** (정상 생성 확인 후 `Ctrl+C`로 종료) ✅ 2026-02-11 완료
   ```powershell
   npx expo start
   ```
@@ -57,7 +57,7 @@
 
 > `implementation_plan.md`의 **프로젝트 구조 설계** 기준
 
-- [ ] **주요 폴더 일괄 생성**
+- [x] **주요 폴더 일괄 생성** ✅ 2026-02-11 완료 (기존 3개 + 신규 5개 = 총 8개)
   ```powershell
   mkdir components, services, types, utils, config, hooks, constants, store
   ```
@@ -78,15 +78,15 @@
 
 > `development-rules.md` **5. 기술 스택 규칙** 및 **UI 컴포넌트 전략** 기준
 
-- [ ] **React Native Paper** (UI 라이브러리)
+- [x] **React Native Paper** (UI 라이브러리) ✅ 2026-02-11 완료
   ```powershell
   npm install react-native-paper react-native-safe-area-context
   ```
-- [ ] **Expo SecureStore** (보안 저장소)
+- [x] **Expo SecureStore** (보안 저장소) ✅ 2026-02-11 완료
   ```powershell
   npx expo install expo-secure-store
   ```
-- [ ] **AsyncStorage** (일반 데이터 저장)
+- [x] **AsyncStorage** (일반 데이터 저장) ✅ 2026-02-11 완료
   ```powershell
   npx expo install @react-native-async-storage/async-storage
   ```
@@ -98,17 +98,17 @@
 
 ## 5. ⚙️ 환경 설정 (~10분)
 
-- [ ] **`.env` 파일 생성** (API 키 등 민감 정보용)
+- [x] **`.env` 파일 생성** (API 키 등 민감 정보용) ✅ 2026-02-11 완료
   ```
   API_URL=https://your-apps-script-url
   ```
-- [ ] **`.env.example` 파일 생성** (팀 공유용, 실제 값 없이 키 이름만)
+- [x] **`.env.example` 파일 생성** (팀 공유용, 실제 값 없이 키 이름만) ✅ 2026-02-11 완료
   ```
   API_URL=
   ```
-- [ ] **PaperProvider 설정** (`app/_layout.tsx`)
+- [x] **PaperProvider 설정** (`app/_layout.tsx`) ✅ 2026-02-11 완료
   - `PaperProvider`로 앱 전체를 감싸기 (테마 적용)
-- [ ] **절대 경로 설정** (`tsconfig.json`, 선택 사항)
+- [x] **절대 경로 설정** (`tsconfig.json`, 선택 사항) ✅ 2026-02-11 이미 설정됨 확인
   - `@/components` 등으로 import 가능하게 설정
 
 > ⚠️ **주의**: `.env` 파일은 절대 GitHub에 올리면 안 됩니다! `.gitignore`에 포함되어 있는지 반드시 확인하세요.

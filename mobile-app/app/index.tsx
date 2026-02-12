@@ -6,12 +6,12 @@ import { MenuCard } from '@/components/MenuCard';
 import { IconSymbolName } from '@/components/ui/icon-symbol';
 
 // 메뉴 데이터 정의
-const MENU_ITEMS: { id: string; title: string; icon: IconSymbolName; route: string }[] = [
-  { id: '1', title: '검색 BS\n& 재작업', icon: 'magnifyingglass', route: '/bs-search' },
-  { id: '2', title: '성과 & 통계', icon: 'chart.bar.fill', route: '/statistics' },
-  { id: '3', title: '매장 디렉토리', icon: 'map.fill', route: '/store-directory' },
-  { id: '4', title: '배차 리스트', icon: 'truck.fill', route: '/dispatch' },
-  { id: '5', title: '작업 가이드', icon: 'book.fill', route: '/work-guide' },
+const MENU_ITEMS: { id: string; title: string; description: string; icon: IconSymbolName; route: string }[] = [
+  { id: '1', title: '[검색] BS 및 리워크', description: '검색을 통한 업무 조회', icon: 'magnifyingglass', route: '/bs-search' },
+  { id: '2', title: '실적 및 통계', description: '일일/월간 실적 대시보드', icon: 'chart.bar.fill', route: '/statistics' },
+  { id: '3', title: '영업점 주소록', description: '전국 영업점 및 지사 연락처', icon: 'map.fill', route: '/store-directory' },
+  { id: '4', title: '배차 목록', description: '실시간 배차 및 이동 현황', icon: 'truck.fill', route: '/dispatch' },
+  { id: '5', title: '업무 가이드', description: '표준 업무 절차 및 매뉴얼', icon: 'book.fill', route: '/work-guide' },
 ];
 
 export default function HomeScreen() {
@@ -33,21 +33,20 @@ export default function HomeScreen() {
         </SafeAreaView>
       </View>
 
-      {/* 메인 컨텐츠 (그리드) */}
+      {/* 메인 컨텐츠 (리스트) */}
       <View style={styles.content}>
         <FlatList
           data={MENU_ITEMS}
           renderItem={({ item }) => (
             <MenuCard
               title={item.title}
+              description={item.description}
               icon={item.icon}
               onPress={() => router.push(item.route as any)}
             />
           )}
           keyExtractor={(item) => item.id}
-          numColumns={2}
-          contentContainerStyle={styles.grid}
-          columnWrapperStyle={styles.columnWrapper}
+          contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
         />
       </View>
@@ -100,11 +99,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 24,
   },
-  grid: {
+  list: {
     paddingHorizontal: 16,
     paddingBottom: 24,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
   },
 });

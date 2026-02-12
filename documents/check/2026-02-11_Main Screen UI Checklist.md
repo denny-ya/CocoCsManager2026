@@ -100,15 +100,15 @@
 
 > 서비스 종류를 선택하여 BS/리워크 데이터를 검색하는 화면.
 
-- [ ] **BS 검색 화면 생성** (`app/bs-search.tsx`)
+- [x] **BS 검색 화면 생성** (`app/bs-search.tsx`)
   - 상단: 헤더 "[ 검색] BS 및 리워크" + 뒤로가기/홈 버튼
   - 4개 선택 박스 (서비스1~4)
   - 검색 버튼
   - 검색 결과 리스트 영역
-- [ ] **선택 박스 구현**
+- [x] **선택 박스 구현**
   - 서비스1, 서비스2, 서비스3, 서비스4 드롭다운
   - Paper `Menu` 또는 커스텀 Picker 활용
-- [ ] **검색 결과 리스트**
+- [x] **검색 결과 리스트**
   - FlatList 기반
   - 빈 상태 UI (검색 전 안내 메시지)
 
@@ -118,7 +118,7 @@
 
 > 하위 2개 메뉴(AS 실적, CS 통계)로 분기하는 화면.
 
-- [ ] **실적/통계 메인 화면** (`app/statistics.tsx`)
+- [x] **실적/통계 메인 화면** (`app/statistics.tsx`)
   - 상단: 헤더 "실적 및 통계" + 뒤로가기/홈 버튼
   - 2개 서브 메뉴 카드
     - 📊 AS 실적
@@ -134,16 +134,15 @@
 
 > 영업점 이름으로 검색하여 주소/연락처를 조회하는 화면.
 
-- [ ] **영업점 검색 화면** (`app/store-directory.tsx`)
+- [x] **영업점 검색 화면** (`app/store-directory.tsx`)
   - 상단: 헤더 "영업점 주소 검색" + 뒤로가기/홈 버튼
   - 검색바 (placeholder: "영업점 검색 (예: 가락점)")
   - 검색 결과 리스트
   - 빈 상태 아이콘 + "검색 시 영업점 목록이 표시됩니다."
-- [ ] **SearchBar 컴포넌트** (`components/SearchBar.tsx`)
-  - Paper `Searchbar` 활용
+- [x] **SearchBar 컴포넌트** (Paper `Searchbar` 인라인 활용)
   - 검색 아이콘 + 입력창 + 초기화 버튼
-- [ ] **영업점 결과 아이템** (`components/StoreItem.tsx`)
-  - 영업점명, 주소, 연락처 표시
+- [x] **영업점 결과 아이템** (인라인 `StoreItem` 컴포넌트)
+  - 영업점명, 주소, 연락처 + 통화 버튼 표시
 
 ---
 
@@ -151,16 +150,16 @@
 
 > 날짜를 선택하여 해당일의 배차 정보를 조회하는 화면.
 
-- [ ] **배차 목록 화면** (`app/dispatch.tsx`)
+- [x] **배차 목록 화면** (`app/dispatch.tsx`)
   - 상단: 헤더 "배차 목록" + 뒤로가기/홈 버튼
   - 날짜 선택기 (배차일)
   - 검색 버튼
   - 배차 결과 리스트
-- [ ] **DatePicker 구현**
-  - `expo-date-time-picker` 또는 Paper 날짜 입력 활용
-  - "날짜 선택" placeholder + 캘린더 아이콘
-- [ ] **배차 리스트 아이템** (`components/DispatchItem.tsx`)
-  - 배차 정보 카드 형태
+- [x] **DatePicker 구현**
+  - Paper `TextInput` + 캘린더 아이콘 활용
+  - "YYYY-MM-DD" 형식 입력
+- [x] **배차 리스트 아이템** (인라인 `DispatchCard` 컴포넌트)
+  - 배차 정보 카드 형태 + 상태 색상 바
 
 ---
 
@@ -168,10 +167,10 @@
 
 > 업무 관련 가이드 문서를 제공하는 화면.
 
-- [ ] **업무 가이드 화면** (`app/work-guide.tsx`)
+- [x] **업무 가이드 화면** (`app/work-guide.tsx`)
   - 상단: 헤더 "업무 가이드" + 뒤로가기/홈 버튼
-  - 가이드 항목 리스트 (아코디언 또는 카드)
-  - 또는 섹션별 가이드 문서 표시
+  - 아코디언 가이드 리스트 (5개 항목)
+  - 터치 시 확장/축소 애니메이션
 
 ---
 
@@ -179,12 +178,12 @@
 
 > 모든 화면에서 공유하는 공통 요소.
 
-- [ ] **공통 헤더 컴포넌트** (`components/Header.tsx`)
+- [x] **공통 헤더 컴포넌트** (`components/Header.tsx`)
   - 제목 + 뒤로가기(←) + 홈(🏠) 버튼
-  - 그라데이션 배경
-- [ ] **공통 빈 상태 컴포넌트** (`components/EmptyState.tsx`)
+  - Primary 배경 + 둥근 모서리
+- [x] **공통 빈 상태 컴포넌트** (`components/EmptyState.tsx`)
   - 아이콘 + 안내 메시지
-- [ ] **색상/테마 상수 정리** (`constants/Colors.ts`)
+- [x] **색상/테마 상수 정리** (`constants/Colors.ts`)
   - 라이트/다크 모드 색상 팔레트
   - 메뉴별 고유 포인트 색상
 
@@ -192,11 +191,11 @@
 
 ## 8. 🧩 TypeScript 타입 및 네비게이션 설정 (~30분)
 
-- [ ] **화면 라우팅 설정** (Expo Router 파일 기반 라우팅)
-  - 각 화면 파일이 곧 라우트
-- [ ] **타입 정의** (`types/`)
-  - 검색 파라미터, 영업점 데이터, 배차 데이터 등
-- [ ] **Mock 데이터** (`services/mockData.ts`)
+- [x] **화면 라우팅 설정** (Expo Router 파일 기반 라우팅)
+  - `_layout.tsx`에 Stack Screen 등록 완료
+- [x] **타입 정의** (`services/mockData.ts` 내 인라인 정의)
+  - BsSearchResult, StoreInfo, DispatchItem, GuideItem
+- [x] **Mock 데이터** (`services/mockData.ts`)
   - UI 테스트용 더미 데이터
 
 ---

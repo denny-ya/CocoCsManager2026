@@ -2,11 +2,11 @@
   "expo": {
     "name": "mobile-app",
     "slug": "mobile-app",
-    "version": "1.0.0",
+    "version": "0.1.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobileapp",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true

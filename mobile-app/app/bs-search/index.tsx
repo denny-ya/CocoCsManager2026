@@ -36,7 +36,7 @@ export default function ServiceSelectScreen() {
                             icon={service.icon}
                             color={service.color}
                             onPress={() => router.push({
-                                pathname: '/bs-search/search',
+                                pathname: '/bs-search/webview',
                                 params: { serviceId: service.id, serviceName: service.name }
                             })}
                         />

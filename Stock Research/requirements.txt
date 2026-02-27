@@ -1,5 +1,0 @@
-yfinance
-mplfinance
-pandas
-beautifulsoup4
-requests

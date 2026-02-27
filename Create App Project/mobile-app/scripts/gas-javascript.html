@@ -1,0 +1,385 @@
+<script>
+  // ===== CocoCSManager 앱 전용 GAS - JavaScript =====
+  // 변경점: 영업점 검색 탭 제거, 2탭 구조 (차대번호 검색 / 마스터 통계)
+
+  // 전역 상태
+  let currentVinInfo = null;
+
+  // ============================================================
+  // 탭 전환 (2탭: vin-search, master-stats)
+  // ============================================================
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+    document.getElementById(tabId).classList.add('active');
+
+    let btnIndex = (tabId === 'vin-search') ? 0 : 1;
+    document.querySelectorAll('.tab-btn')[btnIndex].classList.add('active');
+  }
+
+  // ============================================================
+  // 차대번호 검색
+  // ============================================================
+
+  function searchVIN() {
+    const query = document.getElementById('vin-input').value.trim();
+    if (!query) {
+      showToast('검색어를 입력해주세요.');
+      return;
+    }
+
+    document.getElementById('result-container').innerHTML = '';
+    document.getElementById('result-container').classList.add('hidden');
+    document.getElementById('no-result').classList.add('hidden');
+    document.getElementById('loading').classList.remove('hidden');
+
+    google.script.run
+      .withSuccessHandler(handleSearchResult)
+      .withFailureHandler(handleError)
+      .searchVehicleData(query, document.getElementById('vin-part-select').value);
+  }
+
+  // 리스트에서 차대번호 검색 호출
+  function searchVINFromList(vin) {
+    if (!vin) return;
+    switchTab('vin-search');
+    var input = document.getElementById('vin-input');
+    input.value = vin;
+    input.focus();
+    searchVIN();
+  }
+
+  // 검색 결과 핸들러
+  function handleSearchResult(results) {
+    document.getElementById('loading').classList.add('hidden');
+
+    if (!results || results.length === 0) {
+      document.getElementById('no-result').classList.remove('hidden');
+      currentVinInfo = null;
+      return;
+    }
+
+    const container = document.getElementById('result-container');
+    container.classList.remove('hidden');
+
+    if (results.length === 1) {
+      renderVehicleDetail(results[0]);
+    } else {
+      renderVehicleList(results);
+    }
+  }
+
+  // 차량 목록 렌더링
+  function renderVehicleList(list) {
+    const container = document.getElementById('result-container');
+
+    let html = '<div class="list-container">';
+    html += '<p class="list-title">검색 결과: ' + list.length + '건</p>';
+
+    list.forEach((item, index) => {
+      let badge = '';
+      if (item.completed && String(item.completed).includes('완료')) {
+        badge = '<span class="mini-badge completed">완료</span>';
+      } else if (String(item.bsTarget).includes('리워크')) {
+        badge = '<span class="mini-badge rework">리워크</span>';
+      } else if (item.bsTarget === 'O') {
+        badge = '<span class="mini-badge target">점검대상</span>';
+      }
+
+      html += '<div class="list-item" onclick="selectVehicle(' + index + ')">';
+      html += '<div class="list-item-header"><span class="vin">' + item.vin + '</span>' + badge + '</div>';
+      html += '<div class="list-item-sub">' + item.salesPoint + ' / ' + item.cartVersion + '</div>';
+      html += '</div>';
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+    window.currentList = list;
+  }
+
+  // 리스트에서 차량 선택
+  function selectVehicle(index) {
+    if (window.currentList && window.currentList[index]) {
+      renderVehicleDetail(window.currentList[index]);
+    }
+  }
+
+  // ============================================================
+  // 차량 상세 정보 렌더링
+  // ============================================================
+
+  function renderVehicleDetail(data) {
+    currentVinInfo = data;
+    const container = document.getElementById('result-container');
+    container.classList.remove('hidden');
+
+    const isCompleted = data.completed && String(data.completed).includes('완료');
+
+    // 처리 유형 수집
+    var processList = [];
+    if (data.processInspection) processList.push('점검');
+    if (data.processReplace) processList.push('교체');
+    if (data.processTransfer) processList.push('이관');
+    if (data.processDisposal) processList.push('폐기');
+    var processText = processList.length > 0 ? '(' + processList.join(', ') + ')' : '';
+
+    // 상태 배지
+    let statusHtml = '';
+
+    if (isCompleted) {
+      let completeText = 'BS 완료';
+      if (processText) completeText += ' ' + processText;
+      if (data.completedDate) completeText += ' (' + data.completedDate + ')';
+      statusHtml += '<div class="bs-status completed"><span class="material-icons" style="vertical-align: middle; margin-right: 4px;">verified</span>' + completeText + '</div>';
+    } else {
+      if (String(data.bsTarget).includes('O')) {
+        statusHtml += '<div class="bs-status target"><span class="material-icons" style="vertical-align: middle; margin-right: 4px;">error</span>BS 점검 대상</div>';
+      }
+      if (typeof data.bsTarget === 'string' && data.bsTarget.includes('리워크')) {
+        statusHtml += '<div class="bs-status rework"><span class="material-icons" style="vertical-align: middle; margin-right: 4px;">build_circle</span>리워크(2026)</div>';
+      }
+      if (statusHtml === '') {
+        statusHtml += '<div class="bs-status non-target"><span class="material-icons" style="vertical-align: middle; margin-right: 4px;">check_circle</span>BS 점검 비대상</div>';
+      }
+    }
+
+    var readonlyAttr = isCompleted ? 'readonly' : '';
+    var memoValue = data.memo || '';
+    var completedNote = isCompleted ? '<p style="font-size: 12px; color: #999; margin-top: 8px;">※ 완료된 항목은 수정할 수 없습니다.</p>' : '';
+    var completeButton = isCompleted ? '' : '<button class="action-btn complete-btn" onclick="openModal()"><span class="material-icons">check</span>점검 완료 처리</button>';
+
+    var exclusionBadge = data.exclusionReason ? '<div class="bs-status exclusion"><span class="material-icons" style="vertical-align: middle; margin-right: 4px;">remove_circle</span>제외: ' + data.exclusionReason + '</div>' : '';
+    var disposalBadge = data.disposalTarget ? '<div class="bs-status disposal"><span class="material-icons" style="vertical-align: middle; margin-right: 4px;">delete</span>폐기: ' + data.disposalTarget + '</div>' : '';
+
+    // 카드 HTML
+    var html = '<div class="card">' +
+      statusHtml +
+      exclusionBadge +
+      disposalBadge +
+      '<div class="info-row"><span class="info-label">차대번호</span><span class="info-value">' + data.vin + '</span></div>' +
+      '<div class="info-row"><span class="info-label">카트버전</span><span class="info-value">' + data.cartVersion + '</span></div>' +
+      '<div class="info-row"><span class="info-label">지점/영업소</span><span class="info-value">' + data.branch + ' / ' + data.salesOffice + '</span></div>' +
+      '<div class="info-row"><span class="info-label">영업점</span><span class="info-value">' + data.salesPoint + '</span></div>' +
+      '<div class="info-row"><span class="info-label">지구</span><span class="info-value">' + (data.district || '-') + '</span></div>' +
+      '<div class="info-row"><span class="info-label">마스터</span><span class="info-value">' + data.master + '</span></div>' +
+      '<div class="info-row"><span class="info-label">제조일</span><span class="info-value">' + data.manufactureDate + '</span></div>' +
+      '<div class="divider"></div>' +
+      '<div class="memo-section">' +
+      '<div class="section-title"><span class="material-icons" style="font-size: 16px;">edit_note</span>비고 / 메모</div>' +
+      '<textarea id="memo-input" class="memo-textarea" placeholder="비고 사항을 입력하세요..." ' + readonlyAttr + '>' + memoValue + '</textarea>' +
+      completedNote +
+      '</div>' +
+      completeButton +
+      '<button class="action-btn back-btn" onclick="goBackToHome()"><span class="material-icons">home</span>처음으로</button>' +
+      '</div>';
+
+    container.innerHTML = html;
+  }
+
+  // ============================================================
+  // 완료 처리 모달
+  // ============================================================
+
+  function openModal() {
+    document.getElementById('confirm-modal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    document.getElementById('confirm-modal').classList.add('hidden');
+  }
+
+  function confirmComplete() {
+    if (!currentVinInfo) return;
+
+    var processTypes = {
+      inspection: document.getElementById('process-inspection').checked,
+      replace: document.getElementById('process-replace').checked,
+      transfer: document.getElementById('process-transfer').checked,
+      disposal: document.getElementById('process-disposal').checked
+    };
+
+    if (!processTypes.inspection && !processTypes.replace && !processTypes.transfer && !processTypes.disposal) {
+      showToast('처리구분을 1개 이상 선택해주세요.');
+      return;
+    }
+
+    closeModal();
+
+    var memoText = document.getElementById('memo-input').value;
+
+    var btn = document.querySelector('.complete-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner" style="width: 20px; height: 20px; border-width: 2px; margin: 0;"></span> 처리 중...';
+    }
+
+    google.script.run
+      .withSuccessHandler(handleCompleteSuccess)
+      .withFailureHandler(handleError)
+      .markAsComplete(currentVinInfo.vin, memoText, processTypes);
+  }
+
+  function handleCompleteSuccess(result) {
+    if (result.success) {
+      showToast(result.message);
+      searchVIN();
+    } else {
+      showToast('오류: ' + result.error);
+      const btn = document.querySelector('.complete-btn');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-icons">check</span> 점검 완료 처리';
+      }
+    }
+  }
+
+  // ============================================================
+  // 마스터 통계
+  // ============================================================
+
+  function searchMaster() {
+    const masterInfo = document.getElementById('master-input').value.trim();
+    if (!masterInfo) {
+      showToast('마스터 이름을 입력해주세요.');
+      return;
+    }
+
+    document.getElementById('master-result').innerHTML = '';
+    document.getElementById('master-result').classList.add('hidden');
+    document.getElementById('master-loading').classList.remove('hidden');
+
+    google.script.run
+      .withSuccessHandler(renderMasterStats)
+      .withFailureHandler(handleError)
+      .getMasterStats(masterInfo, document.getElementById('master-part-select').value);
+  }
+
+  function renderMasterStats(stats) {
+    document.getElementById('master-loading').classList.add('hidden');
+    const container = document.getElementById('master-result');
+    container.classList.remove('hidden');
+
+    if (stats.total === 0) {
+      container.innerHTML = '<div class="message-box"><span class="material-icons">person_off</span><p>해당 마스터의 작업 내역이 없습니다.</p></div>';
+      return;
+    }
+
+    var masterName = document.getElementById('master-input').value.trim();
+
+    const createProgressBar = (rate, color) => `
+      <div style="background-color: #eee; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 6px;">
+        <div style="background-color: ${color}; height: 100%; width: ${rate}%;"></div>
+      </div>
+    `;
+
+    var html = '<div class="card">' +
+      '<div class="section-title" style="font-size: 1.1rem; color: var(--text-color); margin-bottom: 20px;">' +
+      '<span class="material-icons">engineering</span>' + masterName + ' 마스터 작업 현황' +
+      '</div>' +
+
+      // 전체 현황
+      '<div style="text-align: center; margin-bottom: 24px;">' +
+      '<div style="font-size: 0.9rem; color: var(--text-light); margin-bottom: 4px;">전체 완료율</div>' +
+      '<div style="font-size: 2.5rem; font-weight: 700; color: var(--primary-color);">' + stats.completionRate + '%</div>' +
+      createProgressBar(stats.completionRate, 'var(--primary-color)') +
+      '<div style="display: flex; justify-content: space-around; margin-top: 12px; font-size: 0.95rem;">' +
+      '<div>완료 <b>' + stats.completed + '</b></div>' +
+      '<div style="color: #ccc;">|</div>' +
+      '<div>전체 <b>' + stats.total + '</b></div>' +
+      '</div>' +
+      '</div>' +
+
+      '<div class="divider"></div>' +
+
+      // 상세 (BS / 리워크 그리드)
+      '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">' +
+      '<div style="background-color: #f9f9f9; padding: 12px; border-radius: 8px;">' +
+      '<div style="font-size: 0.85rem; font-weight: 600; color: var(--danger-color); margin-bottom: 8px;">BS 점검대상</div>' +
+      '<div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 4px;">' + stats.regularCompletionRate + '%</div>' +
+      createProgressBar(stats.regularCompletionRate, 'var(--danger-color)') +
+      '<div style="font-size: 0.85rem; margin-top: 8px; color: #666;">완료 ' + stats.regularCompleted + ' / ' + stats.regularTotal + '</div>' +
+      '</div>' +
+      '<div style="background-color: #f9f9f9; padding: 12px; border-radius: 8px;">' +
+      '<div style="font-size: 0.85rem; font-weight: 600; color: #1565C0; margin-bottom: 8px;">리워크(2026)</div>' +
+      '<div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 4px;">' + stats.reworkCompletionRate + '%</div>' +
+      createProgressBar(stats.reworkCompletionRate, '#1565C0') +
+      '<div style="font-size: 0.85rem; margin-top: 8px; color: #666;">완료 ' + stats.reworkCompleted + ' / ' + stats.reworkTotal + '</div>' +
+      '</div>' +
+      '</div>' +
+
+      '<div class="divider"></div>' +
+
+      // 영업점별 현황 리스트
+      '<div style="margin-top: 16px;">' +
+      '<div style="font-size: 1rem; font-weight: 600; color: var(--text-color); margin-bottom: 12px;">' +
+      '<span class="material-icons" style="font-size: 1rem; vertical-align: middle; margin-right: 4px;">store</span>영업점별 현황' +
+      '</div>' +
+      '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #BBDEFB; border-radius: 8px; background-color: #E3F2FD; padding: 4px;">';
+
+    if (stats.branchStats && stats.branchStats.length > 0) {
+      const createMiniBar = (rate, color) => `
+        <div style="background-color: #eee; width: 50px; height: 4px; border-radius: 2px; margin-top: 4px;">
+          <div style="background-color: ${color}; height: 100%; width: ${rate}%;"></div>
+        </div>
+      `;
+
+      stats.branchStats.forEach(function (branch) {
+        html +=
+          '<div style="padding: 12px; background-color: white; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">' +
+          '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">' +
+          '<div style="font-weight: 600; font-size: 0.95rem;">' + branch.name + '</div>' +
+          '<div style="font-size: 0.9rem; color: #555;">' + branch.completed + '/' + branch.total + ' (' + branch.rate + '%)</div>' +
+          '</div>' +
+          '<div style="display: flex; gap: 12px;">' +
+          '<div style="flex: 1; background-color: #fafafa; padding: 6px 8px; border-radius: 4px;">' +
+          '<div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #666;"><span>BS</span><span>' + branch.regularCompleted + '/' + branch.regularTotal + '</span></div>' +
+          '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">' +
+          '<span style="font-size: 0.8rem; font-weight: 600; color: var(--danger-color);">' + branch.regularRate + '%</span>' +
+          createMiniBar(branch.regularRate, 'var(--danger-color)') +
+          '</div></div>' +
+          '<div style="flex: 1; background-color: #fafafa; padding: 6px 8px; border-radius: 4px;">' +
+          '<div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #666;"><span>Rework</span><span>' + branch.reworkCompleted + '/' + branch.reworkTotal + '</span></div>' +
+          '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">' +
+          '<span style="font-size: 0.8rem; font-weight: 600; color: #1565C0;">' + branch.reworkRate + '%</span>' +
+          createMiniBar(branch.reworkRate, '#1565C0') +
+          '</div></div>' +
+          '</div></div>';
+      });
+    } else {
+      html += '<div style="padding: 12px; text-align: center; color: #999; font-size: 0.9rem;">영업점 데이터 없음</div>';
+    }
+
+    html += '</div></div></div>';
+    container.innerHTML = html;
+  }
+
+  // ============================================================
+  // 공통 유틸리티
+  // ============================================================
+
+  function handleError(error) {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('master-loading').classList.add('hidden');
+    showToast('오류 발생: ' + error.message);
+    console.error(error);
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+    setTimeout(() => { toast.classList.add('hidden'); }, 3000);
+  }
+
+  function goBackToHome() {
+    document.getElementById('result-container').innerHTML = '';
+    document.getElementById('result-container').classList.add('hidden');
+    document.getElementById('no-result').classList.add('hidden');
+    document.getElementById('vin-input').value = '';
+    document.getElementById('vin-input').focus();
+    currentVinInfo = null;
+    showToast('처음 화면으로 돌아왔습니다.');
+  }
+</script>

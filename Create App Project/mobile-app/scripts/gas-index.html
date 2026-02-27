@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <?!= include('Stylesheet'); ?>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>HY Mobility BS 점검</h1>
+        </header>
+
+        <!-- 탭: 2탭 (영업점 검색 제거) -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('vin-search')">차대번호 검색</button>
+            <button class="tab-btn" onclick="switchTab('master-stats')">마스터 통계</button>
+        </div>
+
+        <!-- 차대번호 검색 탭 -->
+        <div id="vin-search" class="tab-content active">
+            <div class="part-selector">
+                <select id="vin-part-select">
+                    <option value="">전체 파트</option>
+                    <option value="서비스1">서비스1</option>
+                    <option value="서비스2">서비스2</option>
+                    <option value="서비스3">서비스3</option>
+                    <option value="서비스4">서비스4</option>
+                </select>
+            </div>
+            <div class="search-box">
+                <input type="text" id="vin-input" placeholder="차대번호 입력 (예: HYM322122726)"
+                    onkeyup="if(event.key === 'Enter') searchVIN()">
+                <button class="icon-btn" onclick="searchVIN()">
+                    <span class="material-icons">search</span>
+                </button>
+            </div>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>데이터 조회 중...</p>
+            </div>
+
+            <div id="result-container" class="hidden">
+                <!-- 결과 카드가 여기에 렌더링됩니다 -->
+            </div>
+
+            <div id="no-result" class="message-box hidden">
+                <span class="material-icons">info</span>
+                <p>검색 결과가 없습니다.</p>
+            </div>
+        </div>
+
+        <!-- 마스터 통계 탭 -->
+        <div id="master-stats" class="tab-content">
+            <div class="part-selector">
+                <select id="master-part-select">
+                    <option value="">전체 파트</option>
+                    <option value="서비스1">서비스1</option>
+                    <option value="서비스2">서비스2</option>
+                    <option value="서비스3">서비스3</option>
+                    <option value="서비스4">서비스4</option>
+                </select>
+            </div>
+            <div class="search-box">
+                <input type="text" id="master-input" placeholder="마스터 이름 입력 (예: 강라성)"
+                    onkeyup="if(event.key === 'Enter') searchMaster()">
+                <button class="icon-btn" onclick="searchMaster()">
+                    <span class="material-icons">search</span>
+                </button>
+            </div>
+
+            <div id="master-loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>통계 조회 중...</p>
+            </div>
+
+            <div id="master-result" class="hidden">
+                <!-- 마스터 통계가 여기에 렌더링됩니다 -->
+            </div>
+        </div>
+
+        <!-- 하단 안내 문구 -->
+        <footer class="app-footer">
+            <p>⚠️ 일일 사용량 제한이 있습니다.</p>
+            <p>불필요한 반복 조회를 자제하시고, 필요시에만 사용해주세요.</p>
+        </footer>
+    </div>
+
+    <!-- 완료 확인 모달 -->
+    <div id="confirm-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>점검 완료 확인</h3>
+            <p>BS 점검대상 여부를 확인하셨나요?</p>
+
+            <!-- 처리구분 선택 -->
+            <div class="process-type-section">
+                <p class="process-type-label">처리구분 선택 (1개 이상 필수)</p>
+                <div class="process-type-grid">
+                    <label class="process-checkbox">
+                        <input type="checkbox" id="process-inspection" value="inspection">
+                        <span class="checkmark"></span>
+                        점검
+                    </label>
+                    <label class="process-checkbox">
+                        <input type="checkbox" id="process-replace" value="replace">
+                        <span class="checkmark"></span>
+                        교체
+                    </label>
+                    <label class="process-checkbox">
+                        <input type="checkbox" id="process-transfer" value="transfer">
+                        <span class="checkmark"></span>
+                        이관
+                    </label>
+                    <label class="process-checkbox">
+                        <input type="checkbox" id="process-disposal" value="disposal">
+                        <span class="checkmark"></span>
+                        폐기
+                    </label>
+                </div>
+            </div>
+
+            <p class="warning-text">완료 처리 시 되돌릴 수 없습니다.</p>
+            <div class="modal-actions">
+                <button class="cancel-btn" onclick="closeModal()">취소</button>
+                <button class="confirm-btn" onclick="confirmComplete()">확인 (완료 날짜 자동 기입)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 토스트 메시지 -->
+    <div id="toast" class="toast hidden">메시지</div>
+
+    <?!= include('JavaScript'); ?>
+</body>
+
+</html>

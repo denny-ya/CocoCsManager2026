@@ -1,0 +1,64 @@
+// Fallback for using MaterialIcons on Android and web.
+
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { SymbolWeight, SymbolViewProps } from 'expo-symbols';
+import { ComponentProps } from 'react';
+import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
+
+type IconMapping = Record<string, ComponentProps<typeof MaterialIcons>['name']>;
+export type IconSymbolName = keyof typeof MAPPING;
+
+/**
+ * Add your SF Symbols to Material Icons mappings here.
+ * - see Material Icons in the [Icons Directory](https://icons.expo.fyi).
+ * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
+ */
+const MAPPING = {
+  // See MaterialIcons here: https://icons.expo.fyi
+  // See SF Symbols in the SF Symbols app on Mac.
+  'house.fill': 'home',
+  'paperplane.fill': 'send',
+  'chevron.left.forwardslash.chevron.right': 'code',
+  'chevron.left': 'chevron-left',
+  'chevron.right': 'chevron-right',
+  'magnifyingglass': 'search',
+  'chart.bar.fill': 'bar-chart',
+  'chart.line.uptrend.xyaxis': 'trending-up',
+  'map.fill': 'place',
+  'truck.fill': 'local-shipping',
+  'book.fill': 'menu-book',
+  'gearshape.fill': 'settings',
+  'list.bullet': 'list',
+  'calendar': 'date-range',
+  'arrow.right': 'arrow-forward',
+  'checkmark.circle.fill': 'check-circle',
+  'clock.fill': 'schedule',
+  'car.fill': 'directions-car',
+  'phone.fill': 'phone',
+  'doc.text.fill': 'description',
+  'wrench.fill': 'build',
+  'person.2.fill': 'people',
+  'shield.fill': 'security',
+  'arrow.down.doc.fill': 'get-app',
+  'info.circle.fill': 'info',
+} as IconMapping;
+
+/**
+ * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.
+ * This ensures a consistent look across platforms, and optimal resource usage.
+ * Icon `name`s are based on SF Symbols and require manual mapping to Material Icons.
+ */
+export function IconSymbol({
+  name,
+  size = 24,
+  color,
+  style,
+}: {
+  name: IconSymbolName;
+  size?: number;
+  color: string | OpaqueColorValue;
+  style?: StyleProp<TextStyle>;
+  weight?: SymbolWeight;
+}) {
+  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
+}

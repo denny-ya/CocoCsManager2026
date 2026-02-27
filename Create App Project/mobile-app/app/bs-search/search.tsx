@@ -68,12 +68,31 @@ export default function BsSearchScreen() {
         setScannerVisible(true);
     };
 
-    const handleBarCodeScanned = (result: { type: string; data: string }) => {
+    const handleBarCodeScanned = async (result: { type: string; data: string }) => {
         if (scanLock.current) return;
         scanLock.current = true;
         setScannerVisible(false);
-        setKeyword(result.data);
-        Alert.alert('스캔 완료', `인식된 코드: ${result.data}`);
+
+        const scannedCode = result.data;
+        setKeyword(scannedCode);
+        setLoading(true); setSearched(true); setResults([]);
+
+        const response = await searchBS(scannedCode, selectedPart);
+        setLoading(false);
+
+        if (response.success && response.data.length > 0) {
+            const matchedVin = response.data[0].vin;
+            setResults(response.data);
+            Alert.alert(
+                '스캔 완료',
+                `인식된 코드: ${scannedCode}\n매칭 차대번호: ${matchedVin}`
+            );
+        } else {
+            Alert.alert(
+                '스캔 완료',
+                `인식된 코드: ${scannedCode}\n⚠️ 매칭되는 차대번호가 없습니다.`
+            );
+        }
     };
 
     return (
@@ -132,7 +151,7 @@ export default function BsSearchScreen() {
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }}>
                     <View style={styles.searchContainer}>
                         <PartChips options={PART_OPTIONS} selected={masterPart} onSelect={setMasterPart} colors={colors} />
-                        <PaperInput mode="outlined" label="마스터 이름 입력 (예: 강라성)"
+                        <PaperInput mode="outlined" label="마스터 이름 입력 (예: 홍길동)"
                             value={masterName} onChangeText={setMasterName} style={styles.input}
                             right={<PaperInput.Icon icon="close-circle" onPress={() => setMasterName('')} />}
                             onSubmitEditing={handleMasterSearch} />
@@ -149,6 +168,8 @@ export default function BsSearchScreen() {
                         <EmptyState icon="chart.bar.fill" message="마스터 이름을 입력해주세요" subMessage="마스터별 점검 현황을 확인할 수 있습니다." />
                     ) : !masterStats ? (
                         <EmptyState icon="exclamationmark.triangle" message="통계를 불러올 수 없습니다" subMessage="마스터 이름을 다시 확인해주세요." />
+                    ) : masterStats.total === 0 ? (
+                        <EmptyState icon="person.fill.xmark" message="해당 파트에 배정된 데이터가 없습니다" subMessage={`'${masterName}' 마스터는 선택한 파트에 작업 내역이 없습니다.\n다른 파트를 선택해주세요.`} />
                     ) : (
                         <MasterStatsView stats={masterStats} masterName={masterName} />
                     )}

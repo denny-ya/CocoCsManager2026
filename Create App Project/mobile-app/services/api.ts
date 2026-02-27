@@ -1,7 +1,7 @@
 import { VehicleData } from './mockData';
 
 // ── 앱 전용 GAS API URL ──
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://script.google.com/macros/s/AKfycbyyeVxmzpurJIgWll33h8vyMHkgPnAd-f6msN_Ay8oVh4hQQ5Vc_JtdLvakMBKwlEd4cg/exec';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://script.google.com/macros/s/AKfycbxzEg5GiQLIcwRBwP-A_1veU1EMMTA-gq2Od_cK_tx735ZL59lHyTNBaMjeEonAZw5ymQ/exec';
 
 export interface SearchResponse {
     success: boolean;

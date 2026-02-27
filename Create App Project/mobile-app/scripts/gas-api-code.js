@@ -12,6 +12,7 @@
  * F: 지역 | G: 지사영업점지역 | H: 생산일 | I: 생산년도 | J: BS점검대상
  * K: 부품 | L: 마스터 | M: 완료 | N: 완료일 | O: 비고
  * P: 제외사유 | Q: 폐차대상 | R: 점검 | S: 교체 | T: 이관 | U: 폐차
+ * V: 차대번호(바코드)
  */
 
 // ============================================================
@@ -173,7 +174,8 @@ function searchVehicleData(query, partFilter) {
           data[j][17], // 17: 점검
           data[j][18], // 18: 교체
           data[j][19], // 19: 이관
-          data[j][20]  // 20: 폐차
+          data[j][20], // 20: 폐차
+          data[j][21]  // 21: 차대번호(바코드)
         ]);
       }
       cache.put('vehicleData', JSON.stringify(lightData), 300); // 5분
@@ -190,16 +192,19 @@ function searchVehicleData(query, partFilter) {
   for (var i = 0; i < data.length; i++) {
     var vinRaw = String(data[i][1]).trim();
     var vinUpper = vinRaw.toUpperCase();
+    var barcodeVin = String(data[i][21] || '').trim();
+    var barcodeUpper = barcodeVin.toUpperCase();
     // K열(index 10) 파트 필터링
     if (partFilter && String(data[i][10]).trim() !== String(partFilter).trim()) continue;
 
     var item = formatVehicleData(data[i], i + 5);
 
-    if (vinUpper === searchStr) {
+    // B열(차대번호) 또는 V열(바코드 차대번호) 매칭
+    if (vinUpper === searchStr || barcodeUpper === searchStr) {
       exactMatches.push(item);
-    } else if (searchStr.length >= 4 && vinUpper.endsWith(searchStr)) {
+    } else if (searchStr.length >= 4 && (vinUpper.endsWith(searchStr) || barcodeUpper.endsWith(searchStr))) {
       endsWithMatches.push(item);
-    } else if (vinUpper.includes(searchStr)) {
+    } else if (vinUpper.includes(searchStr) || barcodeUpper.includes(searchStr)) {
       partialMatches.push(item);
     }
   }
@@ -235,7 +240,8 @@ function formatVehicleData(row, rowIndex) {
     processInspection: row[17] || '',
     processReplace: row[18] || '',
     processTransfer: row[19] || '',
-    processDisposal: row[20] || ''
+    processDisposal: row[20] || '',
+    barcodeVin: row[21] ? String(row[21]).trim() : ''
   };
 }
 

@@ -26,6 +26,7 @@ export type VehicleData = {
     processReplace: string;    // 교체
     processTransfer: string;   // 이관
     processDisposal: string;   // 폐기
+    barcodeVin: string;        // 차대번호(바코드) - V열
 };
 
 // ── 마스터 통계 ──

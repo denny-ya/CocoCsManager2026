@@ -89,10 +89,7 @@ export default function StatisticsScreen() {
                     description="AS 서비스 실적 데이터를 조회합니다"
                     icon="chart.bar.fill"
                     iconColor="#2E7D32"
-                    onPress={() => {
-                        // 추후 하위 화면 이동
-                        // router.push('/statistics/as-performance');
-                    }}
+                    onPress={() => router.push('/statistics/as-performance')}
                 />
 
                 <SubMenuCard

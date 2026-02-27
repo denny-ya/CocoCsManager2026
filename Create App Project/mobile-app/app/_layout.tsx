@@ -24,6 +24,7 @@ export default function RootLayout() {
             <Stack.Screen name="bs-search/index" />
             <Stack.Screen name="bs-search/search" />
             <Stack.Screen name="statistics" />
+            <Stack.Screen name="statistics/as-performance" />
             <Stack.Screen name="store-directory" />
             <Stack.Screen name="dispatch" />
             <Stack.Screen name="work-guide" />

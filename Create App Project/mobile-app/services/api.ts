@@ -163,3 +163,55 @@ export async function markAsComplete(
         };
     }
 }
+
+// ══════════════════════════════════════════════════════════
+// AS 일일실적 API
+// ══════════════════════════════════════════════════════════
+
+const AS_API_URL = process.env.EXPO_PUBLIC_AS_API_URL || '';
+
+async function callAsApi(params: Record<string, string>): Promise<any> {
+    if (!AS_API_URL) throw new Error('AS API URL이 설정되지 않았습니다. .env에 EXPO_PUBLIC_AS_API_URL을 추가해주세요.');
+    const urlParams = new URLSearchParams(params);
+    const fetchUrl = `${AS_API_URL}?${urlParams.toString()}`;
+    console.log(`[AS API] Fetching: ${fetchUrl}`);
+
+    const response = await fetch(fetchUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: { 'Accept': 'application/json' },
+    });
+
+    const text = await response.text();
+    try {
+        return JSON.parse(text);
+    } catch {
+        console.error('[AS API] JSON parse error:', text.substring(0, 200));
+        throw new Error('API 응답 파싱 실패');
+    }
+}
+
+/**
+ * AS 일일실적 조회
+ * @param month "2026-02" 형태 (선택)
+ * @param date "2026-02-27" 형태 (선택)
+ */
+export async function getAsPerformance(month?: string, date?: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    try {
+        const params: Record<string, string> = { action: 'asPerformance' };
+        if (month) params.month = month;
+        if (date) params.date = date;
+        const result = await callAsApi(params);
+        if (result.success) {
+            return { success: true, data: result.data };
+        } else {
+            throw new Error(result.error || '데이터 조회 실패');
+        }
+    } catch (error) {
+        console.error('[AS API Error]', error);
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'AS 실적 조회 실패'
+        };
+    }
+}

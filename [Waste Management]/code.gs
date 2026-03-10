@@ -1,0 +1,244 @@
+/**
+ * 부품 탈거 관리 - Google Apps Script 웹앱
+ * 
+ * 스프레드시트 ID: 1esBI7e8vqyHwcPYXmMvPxbg9DB3qsxaNK3yRoR5gXyc
+ * 
+ * 시트 구조:
+ *   - 2. 부품명: 분류(B), 부품명(C), 기본수량(D), 최대수량(E)
+ *   - 3. 사용자 정보: 사원번호(A), 성명(B)
+ *   - 4. 차대정보: 바코드(A), 차대번호(B)
+ *   - 1. 데이터(탈거): 차대번호(C), 등록자(D), 등록날짜(E), 부품수량(F~AE)
+ */
+
+var SPREADSHEET_ID = '1esBI7e8vqyHwcPYXmMvPxbg9DB3qsxaNK3yRoR5gXyc';
+
+function getSpreadsheet() {
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
+}
+
+function getSheet(name) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(name);
+  
+  // 정확한 이름으로 못 찾으면, 부분 매칭 시도
+  if (!sheet) {
+    var allSheets = ss.getSheets();
+    for (var i = 0; i < allSheets.length; i++) {
+      var sheetName = allSheets[i].getName();
+      if (sheetName.indexOf(name) !== -1 || name.indexOf(sheetName) !== -1) {
+        return allSheets[i];
+      }
+    }
+    // 그래도 못 찾으면 에러 + 시트 목록 표시
+    var names = allSheets.map(function(s) { return '"' + s.getName() + '"'; }).join(', ');
+    throw new Error('시트 "' + name + '"을(를) 찾을 수 없습니다. 사용 가능한 시트: ' + names);
+  }
+  
+  return sheet;
+}
+
+// ============================================================
+// 웹앱 진입점
+// ============================================================
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle('부품 탈거 관리')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// ============================================================
+// 사원번호 로그인 검증
+// ============================================================
+
+function login(empNo) {
+  if (!empNo) return { valid: false, error: '사원번호를 입력해주세요.' };
+
+  var sheet = getSheet('3. 사용자 정보');
+  var data = sheet.getDataRange().getValues();
+  var searchNo = String(empNo).trim();
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === searchNo) {
+      return {
+        valid: true,
+        empNo: searchNo,
+        name: String(data[i][1]).trim()
+      };
+    }
+  }
+
+  return { valid: false, error: '등록되지 않은 사원번호입니다.' };
+}
+
+// ============================================================
+// 부품 목록 조회
+// ============================================================
+
+function getPartsList() {
+  var sheet = getSheet('2. 부품명');
+  var data = sheet.getDataRange().getValues();
+  var parts = [];
+  // 헤더 키워드 필터링 (분류, 부품명 등 헤더행 제외)
+  var headerKeywords = ['분류', '부품명', '탈거수량'];
+
+  for (var i = 1; i < data.length; i++) {
+    var category = String(data[i][1]).trim();
+    var name = String(data[i][2]).trim();
+    var defaultQty = Number(data[i][3]) || 0;
+    var maxQty = Number(data[i][4]) || 1;
+
+    // 빈 이름이거나 헤더 키워드와 일치하면 건너뛰기
+    if (!name) continue;
+    var isHeader = false;
+    for (var h = 0; h < headerKeywords.length; h++) {
+      if (name === headerKeywords[h] || category === headerKeywords[h]) {
+        isHeader = true;
+        break;
+      }
+    }
+    if (isHeader) continue;
+
+    parts.push({
+      index: i - 1,
+      category: category,
+      name: name,
+      defaultQty: defaultQty,
+      maxQty: maxQty
+    });
+  }
+
+  return parts;
+}
+
+// ============================================================
+// 바코드 → 차대번호 조회
+// ============================================================
+
+function lookupBarcode(barcode) {
+  if (!barcode) return { found: false, error: '바코드 값이 없습니다.' };
+
+  var sheet = getSheet('4. 차대정보');
+  var data = sheet.getDataRange().getValues();
+  var searchBarcode = String(barcode).trim();
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === searchBarcode) {
+      return {
+        found: true,
+        barcode: searchBarcode,
+        vin: String(data[i][1]).trim()
+      };
+    }
+  }
+
+  return { found: false, error: '등록되지 않은 바코드입니다.' };
+}
+
+// ============================================================
+// 탈거 기록 저장
+// ============================================================
+
+function submitRecord(vin, empNo, parts) {
+  if (!vin) return { success: false, error: '차대번호가 없습니다.' };
+  if (!empNo) return { success: false, error: '사원번호가 없습니다.' };
+
+  var loginResult = login(empNo);
+  if (!loginResult.valid) {
+    return { success: false, error: loginResult.error };
+  }
+  var employeeName = loginResult.name;
+
+  var sheet = getSheet('1. 데이터(탈거)');
+  var now = new Date();
+  var dateStr = Utilities.formatDate(now, 'Asia/Seoul', 'yyyy-MM-dd');
+
+  // 3행(인덱스 2)의 헤더를 읽어서 부품명 → 열 인덱스 매핑
+  var headerRow = sheet.getRange(3, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var partColumnMap = {};  // { 부품명: 열인덱스 }
+  for (var h = 0; h < headerRow.length; h++) {
+    var headerName = String(headerRow[h]).trim();
+    if (headerName) {
+      partColumnMap[headerName] = h;
+    }
+  }
+
+  // 행 데이터 초기화 (헤더 열 수만큼)
+  var totalCols = headerRow.length;
+  var rowData = [];
+  for (var col = 0; col < totalCols; col++) {
+    rowData[col] = '';
+  }
+  rowData[2] = String(vin);       // C열: 차대번호
+  rowData[3] = employeeName;      // D열: 등록자
+  rowData[4] = dateStr;           // E열: 등록일자
+
+  // 부품 수량 매핑 (부품명으로 열 찾기)
+  if (parts && parts.length > 0) {
+    for (var j = 0; j < parts.length; j++) {
+      var partName = String(parts[j].name || '').trim();
+      var qty = Number(parts[j].qty) || 0;
+      // 부품명으로 열 찾기
+      if (partColumnMap[partName] !== undefined) {
+        rowData[partColumnMap[partName]] = qty;
+      }
+    }
+  }
+
+  sheet.appendRow(rowData);
+  var lastRow = sheet.getLastRow();
+
+  return {
+    success: true,
+    row: lastRow,
+    date: dateStr,
+    employee: employeeName,
+    message: '탈거 기록이 저장되었습니다.'
+  };
+}
+
+// ============================================================
+// 사진 업로드 (Google Drive)
+// ============================================================
+
+function uploadPhoto(base64Data, filename, vin) {
+  if (!base64Data) return { success: false, error: '사진 데이터가 없습니다.' };
+
+  try {
+    var folderName = '부품탈거_사진';
+    var folders = DriveApp.getFoldersByName(folderName);
+    var folder;
+
+    if (folders.hasNext()) {
+      folder = folders.next();
+    } else {
+      folder = DriveApp.createFolder(folderName);
+    }
+
+    if (vin) {
+      var vinFolderName = String(vin);
+      var vinFolders = folder.getFoldersByName(vinFolderName);
+      if (vinFolders.hasNext()) {
+        folder = vinFolders.next();
+      } else {
+        folder = folder.createFolder(vinFolderName);
+      }
+    }
+
+    var decoded = Utilities.base64Decode(base64Data);
+    var blob = Utilities.newBlob(decoded, 'image/jpeg', filename || 'photo.jpg');
+    var file = folder.createFile(blob);
+
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    return {
+      success: true,
+      url: file.getUrl(),
+      fileId: file.getId(),
+      message: '사진이 업로드되었습니다.'
+    };
+  } catch (err) {
+    return { success: false, error: '사진 업로드 실패: ' + err.message };
+  }
+}

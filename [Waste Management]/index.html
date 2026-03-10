@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <style>
+        /* ============================================================
+       글로벌 스타일
+       ============================================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+            background: #f0f4f8;
+            color: #1a1a2e;
+            min-height: 100vh;
+        }
+
+        /* ============================================================
+       헤더
+       ============================================================ */
+        .header {
+            background: linear-gradient(135deg, #1565C0, #1976D2, #2196F3);
+            color: white;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 12px rgba(21, 101, 192, 0.3);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header .user-info {
+            font-size: 13px;
+            opacity: 0.9;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+
+        .header .back-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+
+        /* ============================================================
+       화면 컨테이너
+       ============================================================ */
+        .screen {
+            display: none;
+            padding: 20px;
+            max-width: 500px;
+            margin: 0 auto;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ============================================================
+       로그인 화면
+       ============================================================ */
+        .login-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 80vh;
+            padding: 40px 20px;
+        }
+
+        .login-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #1565C0, #42A5F5);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            margin-bottom: 16px;
+            box-shadow: 0 8px 24px rgba(21, 101, 192, 0.3);
+        }
+
+        .login-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1565C0;
+            margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 32px;
+        }
+
+        .login-input-group {
+            width: 100%;
+            max-width: 320px;
+        }
+
+        .login-input-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .login-input-group input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 2px;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+
+        .login-input-group input:focus {
+            border-color: #1976D2;
+            box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+        }
+
+        /* ============================================================
+       공통 버튼
+       ============================================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 32px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            max-width: 320px;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #1565C0, #1976D2);
+            color: white;
+            box-shadow: 0 4px 12px rgba(21, 101, 192, 0.3);
+            margin-top: 20px;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            box-shadow: 0 6px 20px rgba(21, 101, 192, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #2E7D32, #43A047);
+            color: white;
+            box-shadow: 0 4px 12px rgba(46, 125, 50, 0.3);
+            margin-top: 20px;
+        }
+
+        .btn-outline {
+            background: white;
+            color: #1565C0;
+            border: 2px solid #1565C0;
+            margin-top: 12px;
+        }
+
+        /* ============================================================
+       카드
+       ============================================================ */
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1565C0;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ============================================================
+       차대번호 입력 화면
+       ============================================================ */
+        .vin-input-container {
+            margin-top: 40px;
+        }
+
+        .vin-input-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .vin-input-row input {
+            flex: 1;
+            padding: 14px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .vin-input-row input:focus {
+            border-color: #1976D2;
+        }
+
+        .vin-input-row .icon-btn {
+            width: 52px;
+            height: 52px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            background: white;
+            font-size: 22px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .vin-input-row .icon-btn:hover {
+            border-color: #1976D2;
+            background: #E3F2FD;
+        }
+
+        .vin-hint {
+            font-size: 13px;
+            color: #888;
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        /* ============================================================
+       부품 선택 화면
+       ============================================================ */
+        .category-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 4px;
+            font-size: 15px;
+            font-weight: 700;
+            color: #1565C0;
+            margin-top: 8px;
+        }
+
+        .category-badge {
+            font-size: 11px;
+            background: #E3F2FD;
+            color: #1565C0;
+            padding: 2px 10px;
+            border-radius: 10px;
+        }
+
+        .part-card {
+            background: white;
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+            border: 2px solid transparent;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .part-card.selected {
+            border-color: #1976D2;
+            box-shadow: 0 2px 12px rgba(25, 118, 210, 0.15);
+            background: #FAFCFF;
+        }
+
+        .part-name {
+            font-size: 14px;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .part-max {
+            font-size: 11px;
+            color: #999;
+            margin-left: 4px;
+        }
+
+        .stepper {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            background: #f5f5f5;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .stepper button {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: #e8e8e8;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            color: #333;
+            transition: background 0.15s;
+        }
+
+        .stepper button:hover {
+            background: #d0d0d0;
+        }
+
+        .stepper button:disabled {
+            color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .stepper .qty {
+            width: 40px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+            color: #1565C0;
+            background: #f5f5f5;
+        }
+
+        /* ============================================================
+       확인 & 제출 화면
+       ============================================================ */
+        .summary-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+
+        .summary-item .part-info {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .summary-item .part-qty {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1565C0;
+            background: #E3F2FD;
+            padding: 4px 12px;
+            border-radius: 8px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 14px;
+        }
+
+        .info-row .label {
+            color: #888;
+        }
+
+        .info-row .value {
+            font-weight: 600;
+        }
+
+        /* ============================================================
+       성공 화면
+       ============================================================ */
+        .success-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+            text-align: center;
+        }
+
+        .success-icon {
+            width: 100px;
+            height: 100px;
+            background: linear-gradient(135deg, #2E7D32, #66BB6A);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 50px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 24px rgba(46, 125, 50, 0.3);
+            animation: popIn 0.4s ease;
+        }
+
+        @keyframes popIn {
+            0% {
+                transform: scale(0);
+            }
+
+            70% {
+                transform: scale(1.1);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        .success-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #2E7D32;
+            margin-bottom: 8px;
+        }
+
+        .success-sub {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 32px;
+        }
+
+        /* ============================================================
+       로딩 & 알림
+       ============================================================ */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .loading-overlay.show {
+            display: flex;
+        }
+
+        .loading-box {
+            background: white;
+            border-radius: 16px;
+            padding: 32px 40px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e0e0e0;
+            border-top-color: #1976D2;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast.error {
+            background: #C62828;
+        }
+
+        /* 통계 바 */
+        .stats-bar {
+            display: flex;
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .stat-item {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1565C0;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        /* 바코드 스캐너 */
+        .scanner-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #000;
+            z-index: 1000;
+            flex-direction: column;
+        }
+
+        .scanner-overlay.show {
+            display: flex;
+        }
+
+        .scanner-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+        }
+
+        .scanner-header h3 {
+            font-size: 16px;
+        }
+
+        .scanner-close {
+            background: none;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white;
+            font-size: 16px;
+            padding: 6px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .scanner-video-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .scanner-video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .scanner-guide {
+            position: absolute;
+            width: 260px;
+            height: 120px;
+            border: 3px solid #4CAF50;
+            border-radius: 12px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+        }
+
+        .scanner-status {
+            padding: 16px;
+            text-align: center;
+            color: white;
+            background: rgba(0, 0, 0, 0.8);
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ============================================================
+       로딩 오버레이
+       ============================================================ -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-box">
+            <div class="spinner"></div>
+            <div id="loadingText">처리 중...</div>
+        </div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <!-- ============================================================
+       화면 1: 로그인
+       ============================================================ -->
+    <div id="screen-login" class="screen active">
+        <div class="login-container">
+            <div class="login-icon">🔧</div>
+            <div class="login-title">부품 탈거 관리</div>
+            <div class="login-subtitle">등록된 사원만 로그인 가능합니다</div>
+            <div class="login-input-group">
+                <label>사원번호</label>
+                <input type="number" id="empNoInput" placeholder="사원번호 입력" inputmode="numeric" pattern="[0-9]*">
+            </div>
+            <button class="btn btn-primary" onclick="handleLogin()">
+                🔑 로그인
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면 2: 차대번호 입력
+       ============================================================ -->
+    <div id="screen-vin" class="screen">
+        <div class="header">
+            <h1>🔧 부품 탈거 관리</h1>
+            <div class="user-info" id="headerUserInfo"></div>
+        </div>
+        <div class="vin-input-container">
+            <div class="card">
+                <div class="card-title">🚗 차대번호 입력</div>
+                <div class="vin-input-row">
+                    <input type="text" id="vinInput" placeholder="차대번호를 입력하세요">
+                    <button class="icon-btn" onclick="openBarcodeScanner()" title="바코드 스캔">
+                        📷
+                    </button>
+                </div>
+                <div class="vin-hint">차대번호를 직접 입력하거나 📷 바코드를 스캔하세요</div>
+            </div>
+            <button class="btn btn-primary" onclick="handleVinSubmit()" style="max-width:100%">
+                다음 단계 →
+            </button>
+        </div>
+    </div>
+
+    <!-- 바코드 스캐너 오버레이 -->
+    <div class="scanner-overlay" id="scannerOverlay">
+        <div class="scanner-header">
+            <h3>📷 바코드 스캔</h3>
+            <button class="scanner-close" onclick="closeBarcodeScanner()">닫기</button>
+        </div>
+        <div class="scanner-video-container">
+            <video id="scannerVideo" autoplay playsinline></video>
+            <div class="scanner-guide"></div>
+        </div>
+        <div class="scanner-status" id="scannerStatus">카메라를 시작하는 중...</div>
+    </div>
+
+    <!-- ============================================================
+       화면 3: 부품 탈거 수량 선택
+       ============================================================ -->
+    <div id="screen-parts" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-vin')">←</button>
+            <h1>부품 탈거 선택</h1>
+            <div class="user-info" id="headerVin"></div>
+        </div>
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-value" id="totalParts">26</div>
+                <div class="stat-label">전체 부품</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="selectedParts">0</div>
+                <div class="stat-label">탈거 선택</div>
+            </div>
+        </div>
+        <div id="partsListContainer"></div>
+        <div style="padding: 12px 0 40px;">
+            <button class="btn btn-primary" onclick="goToConfirm()" style="max-width:100%">
+                📋 확인 & 제출 →
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면 4: 확인 & 제출
+       ============================================================ -->
+    <div id="screen-confirm" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-parts')">←</button>
+            <h1>📋 입력 내용 확인</h1>
+            <div></div>
+        </div>
+        <div style="margin-top: 16px;">
+            <div class="card">
+                <div class="card-title">🚗 차대 등록 정보</div>
+                <div class="info-row">
+                    <span class="label">차대번호</span>
+                    <span class="value" id="confirmVin"></span>
+                </div>
+                <div class="info-row">
+                    <span class="label">등록자</span>
+                    <span class="value" id="confirmEmployee"></span>
+                </div>
+                <div class="info-row">
+                    <span class="label">등록일자</span>
+                    <span class="value" id="confirmDate"></span>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">🔧 탈거 부품 목록</div>
+                <div id="confirmPartsList"></div>
+                <div id="noPartsMsg" style="text-align:center;color:#999;padding:20px;display:none;">
+                    탈거 선택된 부품이 없습니다
+                </div>
+            </div>
+            <button class="btn btn-success" onclick="handleSubmit()" style="max-width:100%" id="submitBtn">
+                📤 스프레드시트에 저장
+            </button>
+            <button class="btn btn-outline" onclick="goToScreen('screen-parts')" style="max-width:100%">
+                ← 수정하기
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면 5: 저장 완료
+       ============================================================ -->
+    <div id="screen-success" class="screen">
+        <div class="success-container">
+            <div class="success-icon">✅</div>
+            <div class="success-title">저장 완료!</div>
+            <div class="success-sub" id="successMsg">스프레드시트에 기록되었습니다.</div>
+            <button class="btn btn-primary" onclick="resetApp()">
+                🔄 새 작업 시작
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       JavaScript
+       ============================================================ -->
+    <script>
+        // ── 상태 변수 ──
+        var currentUser = null;   // { empNo, name }
+        var currentVin = '';
+        var partsList = [];       // 전체 부품 목록
+        var partsQty = {};        // { index: qty }
+
+        // ── 화면 전환 ──
+        function goToScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(function (s) {
+                s.classList.remove('active');
+            });
+            document.getElementById(screenId).classList.add('active');
+            window.scrollTo(0, 0);
+        }
+
+        // ── 로딩 ──
+        function showLoading(msg) {
+            document.getElementById('loadingText').textContent = msg || '처리 중...';
+            document.getElementById('loadingOverlay').classList.add('show');
+        }
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('show');
+        }
+
+        // ── Toast 알림 ──
+        function showToast(msg, isError) {
+            var t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(function () { t.className = 'toast'; }, 3000);
+        }
+
+        // ============================================================
+        // 1. 로그인
+        // ============================================================
+        function handleLogin() {
+            var empNo = document.getElementById('empNoInput').value.trim();
+            if (!empNo) {
+                showToast('사원번호를 입력해주세요.', true);
+                return;
+            }
+
+            showLoading('로그인 확인 중...');
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    hideLoading();
+                    if (result.valid) {
+                        currentUser = { empNo: result.empNo, name: result.name };
+                        document.getElementById('headerUserInfo').textContent = result.name;
+                        showToast(result.name + '님 환영합니다!');
+                        loadPartsList();
+                        goToScreen('screen-vin');
+                    } else {
+                        showToast(result.error, true);
+                    }
+                })
+                .withFailureHandler(function (err) {
+                    hideLoading();
+                    showToast('오류: ' + err.message, true);
+                })
+                .login(empNo);
+        }
+
+        // Enter 키 로그인
+        document.getElementById('empNoInput').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') handleLogin();
+        });
+
+        // ============================================================
+        // 2. 부품 목록 로딩 (로그인 후 백그라운드)
+        // ============================================================
+        function loadPartsList() {
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    partsList = result;
+                    renderPartsList();
+                })
+                .withFailureHandler(function (err) {
+                    showToast('부품 목록 로딩 실패: ' + err.message, true);
+                })
+                .getPartsList();
+        }
+
+        // ============================================================
+        // 3. 차대번호 입력
+        // ============================================================
+        function handleVinSubmit() {
+            var vin = document.getElementById('vinInput').value.trim();
+            if (!vin) {
+                showToast('차대번호를 입력해주세요.', true);
+                return;
+            }
+            currentVin = vin;
+            document.getElementById('headerVin').textContent = vin;
+
+            // 기본수량 세팅
+            partsQty = {};
+            partsList.forEach(function (p) {
+                if (p.defaultQty > 0) {
+                    partsQty[p.index] = p.defaultQty;
+                }
+            });
+            renderPartsList();
+            updateSelectedCount();
+            goToScreen('screen-parts');
+        }
+
+        document.getElementById('vinInput').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') handleVinSubmit();
+        });
+
+        // ── 바코드 스캔 (카메라) ──
+        var scannerStream = null;
+        var scannerInterval = null;
+
+        function openBarcodeScanner() {
+            var overlay = document.getElementById('scannerOverlay');
+            overlay.classList.add('show');
+            document.getElementById('scannerStatus').textContent = '카메라를 시작하는 중...';
+
+            var video = document.getElementById('scannerVideo');
+            navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+            })
+                .then(function (stream) {
+                    scannerStream = stream;
+                    video.srcObject = stream;
+                    document.getElementById('scannerStatus').textContent = '바코드를 가이드 안에 맞춰주세요';
+                    startBarcodeDetection(video);
+                })
+                .catch(function (err) {
+                    document.getElementById('scannerStatus').textContent = '카메라 접근 실패: ' + err.message;
+                    // 카메라 실패 시 수동 입력 폴백
+                    setTimeout(function () {
+                        closeBarcodeScanner();
+                        var barcode = prompt('카메라를 사용할 수 없습니다.\n바코드 값을 직접 입력하세요:');
+                        if (barcode) lookupAndFillVin(barcode);
+                    }, 1500);
+                });
+        }
+
+        function startBarcodeDetection(video) {
+            // BarcodeDetector API (Chrome on Android 지원)
+            if ('BarcodeDetector' in window) {
+                var detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'qr_code', 'codabar'] });
+                scannerInterval = setInterval(function () {
+                    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                        detector.detect(video).then(function (barcodes) {
+                            if (barcodes.length > 0) {
+                                var barcode = barcodes[0].rawValue;
+                                closeBarcodeScanner();
+                                lookupAndFillVin(barcode);
+                            }
+                        }).catch(function () { });
+                    }
+                }, 500);
+            } else {
+                document.getElementById('scannerStatus').textContent =
+                    '이 브라우저에서 자동 인식이 지원되지 않습니다.\n수동 입력으로 전환합니다.';
+                setTimeout(function () {
+                    closeBarcodeScanner();
+                    var barcode = prompt('바코드 값을 직접 입력하세요:');
+                    if (barcode) lookupAndFillVin(barcode);
+                }, 2000);
+            }
+        }
+
+        function closeBarcodeScanner() {
+            if (scannerInterval) {
+                clearInterval(scannerInterval);
+                scannerInterval = null;
+            }
+            if (scannerStream) {
+                scannerStream.getTracks().forEach(function (t) { t.stop(); });
+                scannerStream = null;
+            }
+            document.getElementById('scannerVideo').srcObject = null;
+            document.getElementById('scannerOverlay').classList.remove('show');
+        }
+
+        function lookupAndFillVin(barcode) {
+            showLoading('바코드 조회 중...');
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    hideLoading();
+                    if (result.found) {
+                        document.getElementById('vinInput').value = result.vin;
+                        showToast('차대번호: ' + result.vin);
+                    } else {
+                        showToast(result.error, true);
+                    }
+                })
+                .withFailureHandler(function (err) {
+                    hideLoading();
+                    showToast('바코드 조회 실패: ' + err.message, true);
+                })
+                .lookupBarcode(barcode);
+        }
+
+        // ============================================================
+        // 4. 부품 목록 렌더링
+        // ============================================================
+        function renderPartsList() {
+            var container = document.getElementById('partsListContainer');
+            if (!partsList || partsList.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align:center;color:#999;">부품 목록을 불러오는 중...</div>';
+                return;
+            }
+
+            var categoryIcons = {
+                '배터리': '🔋',
+                '냉장고': '🧊',
+                '새시': '⚙️',
+                '전장': '🔌',
+                '기타': '📦'
+            };
+
+            var html = '';
+            var currentCategory = '';
+
+            partsList.forEach(function (part) {
+                if (part.category !== currentCategory) {
+                    currentCategory = part.category;
+                    var icon = categoryIcons[currentCategory] || '📦';
+                    html += '<div class="category-header">' + icon + ' ' + currentCategory;
+                    html += ' <span class="category-badge">' + countCategory(currentCategory) + '개</span>';
+                    html += '</div>';
+                }
+
+                var qty = partsQty[part.index] || 0;
+                var isSelected = qty > 0;
+
+                html += '<div class="part-card' + (isSelected ? ' selected' : '') + '" id="part-' + part.index + '">';
+                html += '  <div class="part-name">' + part.name;
+                html += '    <span class="part-max">max:' + part.maxQty + '</span>';
+                html += '  </div>';
+                html += '  <div class="stepper">';
+                html += '    <button onclick="changeQty(' + part.index + ',-1,' + part.maxQty + ')"' + (qty <= 0 ? ' disabled' : '') + '>−</button>';
+                html += '    <span class="qty">' + qty + '</span>';
+                html += '    <button onclick="changeQty(' + part.index + ',1,' + part.maxQty + ')"' + (qty >= part.maxQty ? ' disabled' : '') + '>+</button>';
+                html += '  </div>';
+                html += '</div>';
+            });
+
+            container.innerHTML = html;
+        }
+
+        function countCategory(cat) {
+            return partsList.filter(function (p) { return p.category === cat; }).length;
+        }
+
+        function changeQty(partIndex, delta, maxQty) {
+            var current = partsQty[partIndex] || 0;
+            var newQty = current + delta;
+            if (newQty < 0) newQty = 0;
+            if (newQty > maxQty) newQty = maxQty;
+
+            if (newQty === 0) {
+                delete partsQty[partIndex];
+            } else {
+                partsQty[partIndex] = newQty;
+            }
+
+            renderPartsList();
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            var count = Object.keys(partsQty).length;
+            document.getElementById('selectedParts').textContent = count;
+        }
+
+        // ============================================================
+        // 5. 확인 화면
+        // ============================================================
+        function goToConfirm() {
+            var selectedParts = getSelectedParts();
+
+            document.getElementById('confirmVin').textContent = currentVin;
+            document.getElementById('confirmEmployee').textContent =
+                currentUser.name + ' (' + currentUser.empNo + ')';
+
+            var now = new Date();
+            var dateStr = now.getFullYear() + '-' +
+                String(now.getMonth() + 1).padStart(2, '0') + '-' +
+                String(now.getDate()).padStart(2, '0');
+            document.getElementById('confirmDate').textContent = dateStr;
+
+            var listHtml = '';
+            if (selectedParts.length === 0) {
+                document.getElementById('noPartsMsg').style.display = 'block';
+            } else {
+                document.getElementById('noPartsMsg').style.display = 'none';
+                selectedParts.forEach(function (sp) {
+                    listHtml += '<div class="summary-item">';
+                    listHtml += '  <span class="part-info">' + sp.name + '</span>';
+                    listHtml += '  <span class="part-qty">' + sp.qty + '개</span>';
+                    listHtml += '</div>';
+                });
+            }
+            document.getElementById('confirmPartsList').innerHTML = listHtml;
+
+            goToScreen('screen-confirm');
+        }
+
+        function getSelectedParts() {
+            var selected = [];
+            for (var idx in partsQty) {
+                if (partsQty[idx] > 0) {
+                    var part = partsList.find(function (p) { return p.index === parseInt(idx); });
+                    if (part) {
+                        selected.push({
+                            index: parseInt(idx),
+                            name: part.name,
+                            qty: partsQty[idx]
+                        });
+                    }
+                }
+            }
+            return selected;
+        }
+
+        // ============================================================
+        // 6. 제출
+        // ============================================================
+        function handleSubmit() {
+            var selectedParts = getSelectedParts();
+            var partsData = selectedParts.map(function (sp) {
+                return { index: sp.index, name: sp.name, qty: sp.qty };
+            });
+
+            showLoading('스프레드시트에 저장 중...');
+            document.getElementById('submitBtn').disabled = true;
+
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    hideLoading();
+                    if (result.success) {
+                        document.getElementById('successMsg').textContent =
+                            result.employee + '님의 기록이 저장되었습니다. (행: ' + result.row + ')';
+                        goToScreen('screen-success');
+                    } else {
+                        showToast(result.error, true);
+                        document.getElementById('submitBtn').disabled = false;
+                    }
+                })
+                .withFailureHandler(function (err) {
+                    hideLoading();
+                    showToast('저장 실패: ' + err.message, true);
+                    document.getElementById('submitBtn').disabled = false;
+                })
+                .submitRecord(currentVin, currentUser.empNo, partsData);
+        }
+
+        // ============================================================
+        // 7. 초기화 (새 작업)
+        // ============================================================
+        function resetApp() {
+            currentVin = '';
+            partsQty = {};
+            document.getElementById('vinInput').value = '';
+            document.getElementById('submitBtn').disabled = false;
+            goToScreen('screen-vin');
+        }
+    </script>
+
+</body>
+
+</html>

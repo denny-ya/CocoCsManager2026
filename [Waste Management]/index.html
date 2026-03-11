@@ -571,6 +571,7 @@
         #barcodeCaptureInput {
             display: none;
         }
+
         .scan-result-box {
             background: #E8F5E9;
             border: 2px solid #4CAF50;
@@ -580,11 +581,129 @@
             display: none;
             text-align: center;
         }
-        .scan-result-box.show { display: block; }
-        .scan-result-box .result-label { font-size: 12px; color: #666; }
-        .scan-result-box .result-value { font-size: 18px; font-weight: 700; color: #2E7D32; }
+
+        .scan-result-box.show {
+            display: block;
+        }
+
+        .scan-result-box .result-label {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .scan-result-box .result-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2E7D32;
+        }
+
+        /* ============================================================
+       탭 바 (VIN 화면 하위)
+       ============================================================ */
+        .tab-bar {
+            display: flex;
+            background: white;
+            border-bottom: 2px solid #e0e0e0;
+            margin: 0 -20px;
+        }
+
+        .tab-bar .tab {
+            flex: 1;
+            padding: 12px 8px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab-bar .tab.active {
+            color: #1565C0;
+            border-bottom-color: #1565C0;
+            background: #E3F2FD;
+        }
+
+        /* ============================================================
+       재사용품 이관 폼
+       ============================================================ */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: inline-block;
+            background: #1565C0;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            border-color: #1976D2;
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            background: white;
+            transition: border-color 0.2s;
+        }
+
+        .form-select:focus {
+            border-color: #1976D2;
+        }
+
+        /* ============================================================
+       카트버전 버튼
+       ============================================================ */
+        .cart-version-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .cart-btn {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            background: white;
+            color: #666;
+        }
+
+        .cart-btn.active {
+            background: linear-gradient(135deg, #1565C0, #42A5F5);
+            color: white;
+            border-color: #1565C0;
+            box-shadow: 0 3px 10px rgba(21, 101, 192, 0.3);
+        }
     </style>
-    <script src="https://unpkg.com/@aspect-build/aspect-barcode@0.1.0/dist/barcode.min.js" onerror="console.log('External barcode lib not loaded')"></script>
+    <script src="https://unpkg.com/@aspect-build/aspect-barcode@0.1.0/dist/barcode.min.js"
+        onerror="console.log('External barcode lib not loaded')"></script>
 </head>
 
 <body>
@@ -626,7 +745,14 @@
             <h1>🔧 부품 탈거 관리</h1>
             <div class="user-info" id="headerUserInfo"></div>
         </div>
-        <div class="vin-input-container">
+        <!-- 탭 바 -->
+        <div class="tab-bar">
+            <div class="tab active" onclick="switchMainTab('register')">등록</div>
+            <div class="tab" onclick="switchMainTab('transfer')">재사용품 이관</div>
+            <div class="tab" onclick="switchMainTab('goal')">월 목표</div>
+        </div>
+        <!-- 등록 탭 내용 -->
+        <div id="main-tab-register" style="margin-top:16px;">
             <div class="card">
                 <div class="card-title">🚗 차대번호 입력</div>
                 <div class="vin-input-row">
@@ -640,6 +766,39 @@
             <button class="btn btn-primary" onclick="handleVinSubmit()" style="max-width:100%">
                 다음 단계 →
             </button>
+        </div>
+        <!-- 재사용품 이관 탭 내용 -->
+        <div id="main-tab-transfer" style="display:none; margin-top:16px;">
+            <div class="form-group">
+                <span class="form-label">등록일자</span>
+                <input type="date" class="form-input" id="transferDate">
+            </div>
+            <div class="form-group">
+                <span class="form-label">이관구분</span>
+                <select class="form-select" id="transferType">
+                    <option value="">선택하세요</option>
+                    <option value="QC 검수 완료">QC 검수 완료</option>
+                    <option value="SCM 이관">SCM 이관</option>
+                    <option value="화산자원 이관">화산자원 이관</option>
+                </select>
+            </div>
+            <!-- 카트버전 버튼 -->
+            <div class="cart-version-row">
+                <button class="cart-btn active" id="transCartBtn1" onclick="selectTransferCartVersion('HY2.0/2.5')">HY2.0/2.5</button>
+                <button class="cart-btn" id="transCartBtn2" onclick="selectTransferCartVersion('HY3.0/3.5')">HY3.0/3.5</button>
+            </div>
+            <div id="transferPartsListContainer"></div>
+            <div style="padding:12px 0 40px;">
+                <button class="btn btn-success" onclick="goToTransferConfirm()" style="max-width:100%">
+                    📋 확인 & 제출 →
+                </button>
+            </div>
+        </div>
+        <!-- 월 목표 탭 내용 -->
+        <div id="main-tab-goal" style="display:none; text-align:center; padding:80px 20px; color:#888;">
+            <div style="font-size:48px; margin-bottom:16px;">📊</div>
+            <div style="font-size:16px; font-weight:600;">월 목표</div>
+            <div style="font-size:13px; margin-top:8px;">준비 중입니다...</div>
         </div>
     </div>
 
@@ -655,6 +814,11 @@
             <button class="back-btn" onclick="goToScreen('screen-vin')">←</button>
             <h1>부품 탈거 선택</h1>
             <div class="user-info" id="headerVin"></div>
+        </div>
+        <!-- 카트버전 버튼 -->
+        <div class="cart-version-row" style="margin-top:12px;">
+            <button class="cart-btn active" id="regCartBtn1" onclick="selectRegCartVersion('HY2.0/2.5')">HY2.0/2.5</button>
+            <button class="cart-btn" id="regCartBtn2" onclick="selectRegCartVersion('HY3.0/3.5')">HY3.0/3.5</button>
         </div>
         <div class="stats-bar">
             <div class="stat-item">
@@ -730,6 +894,58 @@
     </div>
 
     <!-- ============================================================
+       화면: 재사용품 이관 확인
+       ============================================================ -->
+    <div id="screen-transfer-confirm" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-vin')">←</button>
+            <h1>📋 이관 내용 확인</h1>
+            <div></div>
+        </div>
+        <div style="margin-top: 16px;">
+            <div class="card">
+                <div class="card-title">📦 이관 등록 정보</div>
+                <div class="info-row">
+                    <span class="label">등록일자</span>
+                    <span class="value" id="tConfirmDate"></span>
+                </div>
+                <div class="info-row">
+                    <span class="label">이관구분</span>
+                    <span class="value" id="tConfirmType"></span>
+                </div>
+                <div class="info-row">
+                    <span class="label">등록자</span>
+                    <span class="value" id="tConfirmEmployee"></span>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">🔧 이관 부품 목록</div>
+                <div id="tConfirmPartsList"></div>
+            </div>
+            <button class="btn btn-success" onclick="handleTransferSubmit()" style="max-width:100%" id="transferSubmitBtn">
+                📤 스프레드시트에 저장
+            </button>
+            <button class="btn btn-outline" onclick="goToScreen('screen-vin')" style="max-width:100%">
+                ← 수정하기
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면: 재사용품 이관 성공
+       ============================================================ -->
+    <div id="screen-transfer-success" class="screen">
+        <div class="success-container">
+            <div class="success-icon">✅</div>
+            <div class="success-title">이관 기록 저장 완료!</div>
+            <div class="success-sub" id="transferSuccessMsg">스프레드시트에 기록되었습니다.</div>
+            <button class="btn btn-primary" onclick="resetTransfer()">
+                🔄 새 이관 등록
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
        JavaScript
        ============================================================ -->
     <script>
@@ -740,6 +956,8 @@
         var partsQty = {};        // { index: qty }
         var isEditMode = false;   // 수정 모드 여부
         var editRow = null;       // 수정할 행 번호
+        var regCartVersion = 'HY2.0/2.5';       // 등록 탭 카트버전
+        var transferCartVersion = 'HY2.0/2.5';   // 이관 탭 카트버전
 
         // ── 화면 전환 ──
         function goToScreen(screenId) {
@@ -811,6 +1029,7 @@
                 .withSuccessHandler(function (result) {
                     partsList = result;
                     renderPartsList();
+                    renderTransferPartsList();
                 })
                 .withFailureHandler(function (err) {
                     showToast('부품 목록 로딩 실패: ' + err.message, true);
@@ -831,7 +1050,7 @@
             // 중복 차대번호 체크
             showLoading('차대번호 확인 중...');
             google.script.run
-                .withSuccessHandler(function(result) {
+                .withSuccessHandler(function (result) {
                     hideLoading();
                     if (result.exists) {
                         // 중복 발견 → 수정 여부 확인
@@ -848,7 +1067,7 @@
 
                             // 기존 수량 로드
                             partsQty = {};
-                            partsList.forEach(function(p) {
+                            partsList.forEach(function (p) {
                                 var existQty = result.existingParts[p.name];
                                 if (existQty && existQty > 0) {
                                     partsQty[p.index] = existQty;
@@ -877,7 +1096,7 @@
                         goToScreen('screen-parts');
                     }
                 })
-                .withFailureHandler(function(err) {
+                .withFailureHandler(function (err) {
                     hideLoading();
                     showToast('확인 실패: ' + err.message, true);
                 })
@@ -895,16 +1114,16 @@
         }
 
         // 카메라 촬영 완료 시 바코드 인식
-        document.getElementById('barcodeCaptureInput').addEventListener('change', function(e) {
+        document.getElementById('barcodeCaptureInput').addEventListener('change', function (e) {
             var file = e.target.files[0];
             if (!file) return;
 
             showLoading('바코드 인식 중...');
 
             var reader = new FileReader();
-            reader.onload = function(event) {
+            reader.onload = function (event) {
                 var img = new Image();
-                img.onload = function() {
+                img.onload = function () {
                     // 캔버스에 이미지 그리기
                     var canvas = document.getElementById('barcodeCanvas');
                     var ctx = canvas.getContext('2d');
@@ -932,7 +1151,7 @@
                     formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'qr_code', 'codabar', 'itf', 'upc_a', 'upc_e']
                 });
                 detector.detect(canvas)
-                    .then(function(barcodes) {
+                    .then(function (barcodes) {
                         hideLoading();
                         if (barcodes.length > 0) {
                             var barcode = barcodes[0].rawValue;
@@ -942,7 +1161,7 @@
                             showToast('바코드를 인식할 수 없습니다. 다시 촬영하거나 직접 입력해주세요.', true);
                         }
                     })
-                    .catch(function(err) {
+                    .catch(function (err) {
                         hideLoading();
                         showToast('바코드 인식 실패. 직접 입력해주세요.', true);
                     });
@@ -983,6 +1202,14 @@
                 return;
             }
 
+            // 카트버전으로 필터링
+            var filtered = partsList.filter(function(p) {
+                return p.cartVersion === regCartVersion;
+            });
+
+            // 전체 부품 수 업데이트
+            document.getElementById('totalParts').textContent = filtered.length;
+
             var categoryIcons = {
                 '배터리': '🔋',
                 '냉장고': '🧊',
@@ -994,12 +1221,13 @@
             var html = '';
             var currentCategory = '';
 
-            partsList.forEach(function (part) {
+            filtered.forEach(function (part) {
                 if (part.category !== currentCategory) {
                     currentCategory = part.category;
                     var icon = categoryIcons[currentCategory] || '📦';
+                    var catCount = filtered.filter(function(p) { return p.category === currentCategory; }).length;
                     html += '<div class="category-header">' + icon + ' ' + currentCategory;
-                    html += ' <span class="category-badge">' + countCategory(currentCategory) + '개</span>';
+                    html += ' <span class="category-badge">' + catCount + '개</span>';
                     html += '</div>';
                 }
 
@@ -1021,8 +1249,13 @@
             container.innerHTML = html;
         }
 
-        function countCategory(cat) {
-            return partsList.filter(function (p) { return p.category === cat; }).length;
+        // 등록 탭 카트버전 선택
+        function selectRegCartVersion(version) {
+            regCartVersion = version;
+            document.getElementById('regCartBtn1').classList.toggle('active', version === 'HY2.0/2.5');
+            document.getElementById('regCartBtn2').classList.toggle('active', version === 'HY3.0/3.5');
+            renderPartsList();
+            updateSelectedCount();
         }
 
         function changeQty(partIndex, delta, maxQty) {
@@ -1153,6 +1386,209 @@
             document.getElementById('submitBtn').disabled = false;
             goToScreen('screen-vin');
         }
+
+        // ============================================================
+        // 탭 전환 (VIN 화면 내 등록/이관/목표)
+        // ============================================================
+        function switchMainTab(tabName) {
+            var tabs = document.querySelectorAll('.tab-bar .tab');
+            tabs.forEach(function(t) { t.classList.remove('active'); });
+            event.target.classList.add('active');
+
+            document.getElementById('main-tab-register').style.display = 'none';
+            document.getElementById('main-tab-transfer').style.display = 'none';
+            document.getElementById('main-tab-goal').style.display = 'none';
+            document.getElementById('main-tab-' + tabName).style.display = 'block';
+        }
+
+        // ============================================================
+        // 재사용품 이관: 부품 렌더링
+        // ============================================================
+        var transferPartsQty = {};
+
+        function renderTransferPartsList() {
+            var container = document.getElementById('transferPartsListContainer');
+            if (!partsList || partsList.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align:center;color:#999;">부품 목록을 불러오는 중...</div>';
+                return;
+            }
+
+            // 카트버전으로 필터링
+            var filtered = partsList.filter(function(p) {
+                return p.cartVersion === transferCartVersion;
+            });
+
+            var categoryIcons = {
+                '배터리': '🔋', '냉장고': '🧊', '섀시': '⚙️',
+                '전장': '🔌', '기타': '📦'
+            };
+
+            var html = '';
+            var currentCategory = '';
+
+            filtered.forEach(function(part) {
+                if (part.category !== currentCategory) {
+                    currentCategory = part.category;
+                    var icon = categoryIcons[currentCategory] || '📦';
+                    var catCount = filtered.filter(function(p) { return p.category === currentCategory; }).length;
+                    html += '<div class="category-header">' + icon + ' ' + currentCategory;
+                    html += ' <span class="category-badge">' + catCount + '개</span>';
+                    html += '</div>';
+                }
+
+                var qty = transferPartsQty[part.index] || 0;
+                var isSelected = qty > 0;
+
+                html += '<div class="part-card' + (isSelected ? ' selected' : '') + '">';
+                html += '  <div class="part-name">' + part.name + '</div>';
+                html += '  <div class="stepper">';
+                html += '    <button onclick="changeTransferQty(' + part.index + ',-1)"' + (qty <= 0 ? ' disabled' : '') + '>−</button>';
+                html += '    <input type="number" class="qty" value="' + qty + '" min="0" style="width:50px;border:none;font-size:16px;font-weight:700;color:#1565C0;text-align:center;background:transparent;-moz-appearance:textfield;" onchange="setTransferQty(' + part.index + ', this.value)" onclick="this.select()">';
+                html += '    <button onclick="changeTransferQty(' + part.index + ',1)">+</button>';
+                html += '  </div>';
+                html += '</div>';
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 이관 탭 카트버전 선택
+        function selectTransferCartVersion(version) {
+            transferCartVersion = version;
+            document.getElementById('transCartBtn1').classList.toggle('active', version === 'HY2.0/2.5');
+            document.getElementById('transCartBtn2').classList.toggle('active', version === 'HY3.0/3.5');
+            renderTransferPartsList();
+        }
+
+        function changeTransferQty(partIndex, delta) {
+            var current = transferPartsQty[partIndex] || 0;
+            var newQty = Math.max(0, current + delta);
+            if (newQty === 0) {
+                delete transferPartsQty[partIndex];
+            } else {
+                transferPartsQty[partIndex] = newQty;
+            }
+            renderTransferPartsList();
+        }
+
+        function setTransferQty(partIndex, value) {
+            var qty = Math.max(0, parseInt(value) || 0);
+            if (qty === 0) {
+                delete transferPartsQty[partIndex];
+            } else {
+                transferPartsQty[partIndex] = qty;
+            }
+            renderTransferPartsList();
+        }
+
+        // ============================================================
+        // 재사용품 이관: 확인 화면
+        // ============================================================
+        function goToTransferConfirm() {
+            var dateStr = document.getElementById('transferDate').value;
+            var transferType = document.getElementById('transferType').value;
+
+            if (!dateStr) { showToast('등록일자를 선택해주세요.', true); return; }
+            if (!transferType) { showToast('이관구분을 선택해주세요.', true); return; }
+
+            var selectedParts = getTransferSelectedParts();
+            if (selectedParts.length === 0) {
+                showToast('수량이 입력된 부품이 없습니다.', true);
+                return;
+            }
+
+            // 확인 화면 채우기
+            document.getElementById('tConfirmDate').textContent = dateStr;
+            document.getElementById('tConfirmType').textContent = transferType;
+            document.getElementById('tConfirmEmployee').textContent =
+                currentUser.name + ' (' + currentUser.empNo + ')';
+
+            var listHtml = '';
+            selectedParts.forEach(function(sp) {
+                listHtml += '<div class="summary-item">';
+                listHtml += '  <span class="part-info">' + sp.name + '</span>';
+                listHtml += '  <span class="part-qty">' + sp.qty + '개</span>';
+                listHtml += '</div>';
+            });
+            document.getElementById('tConfirmPartsList').innerHTML = listHtml;
+
+            goToScreen('screen-transfer-confirm');
+        }
+
+        function getTransferSelectedParts() {
+            var selected = [];
+            for (var idx in transferPartsQty) {
+                if (transferPartsQty[idx] > 0) {
+                    var part = partsList.find(function(p) { return p.index === parseInt(idx); });
+                    if (part) {
+                        selected.push({
+                            name: part.name,
+                            category: part.category,
+                            qty: transferPartsQty[idx],
+                            newPrice: part.newPrice,
+                            reusedPrice: part.reusedPrice
+                        });
+                    }
+                }
+            }
+            return selected;
+        }
+
+        // ============================================================
+        // 재사용품 이관: 제출
+        // ============================================================
+        function handleTransferSubmit() {
+            var dateStr = document.getElementById('transferDate').value;
+            var transferType = document.getElementById('transferType').value;
+            var selectedParts = getTransferSelectedParts();
+
+            showLoading('이관 기록 저장 중...');
+            document.getElementById('transferSubmitBtn').disabled = true;
+
+            google.script.run
+                .withSuccessHandler(function(result) {
+                    hideLoading();
+                    document.getElementById('transferSubmitBtn').disabled = false;
+                    if (result.success) {
+                        document.getElementById('transferSuccessMsg').textContent = result.message;
+                        goToScreen('screen-transfer-success');
+                    } else {
+                        showToast(result.error, true);
+                    }
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    document.getElementById('transferSubmitBtn').disabled = false;
+                    showToast('저장 실패: ' + err.message, true);
+                })
+                .submitTransfer(dateStr, transferType, selectedParts);
+        }
+
+        function resetTransfer() {
+            transferPartsQty = {};
+            document.getElementById('transferDate').value = getTodayStr();
+            document.getElementById('transferType').value = '';
+            renderTransferPartsList();
+            goToScreen('screen-vin');
+            // 이관 탭으로 돌아가기
+            switchMainTab('transfer');
+            document.querySelectorAll('.tab-bar .tab').forEach(function(t, i) {
+                t.classList.toggle('active', i === 1);
+            });
+        }
+
+        // 오늘 날짜 유틸
+        function getTodayStr() {
+            var now = new Date();
+            return now.getFullYear() + '-' +
+                String(now.getMonth() + 1).padStart(2, '0') + '-' +
+                String(now.getDate()).padStart(2, '0');
+        }
+
+        // 초기화: 오늘 날짜 세팅
+        (function() {
+            document.getElementById('transferDate').value = getTodayStr();
+        })();
     </script>
 
 </body>

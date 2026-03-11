@@ -81,13 +81,16 @@ function getPartsList() {
   var data = sheet.getDataRange().getValues();
   var parts = [];
   // 헤더 키워드 필터링 (분류, 부품명 등 헤더행 제외)
-  var headerKeywords = ['분류', '부품명', '탈거수량'];
+  var headerKeywords = ['카트버전', '분류', '부품명', '탈거수량'];
 
   for (var i = 1; i < data.length; i++) {
-    var category = String(data[i][1]).trim();
-    var name = String(data[i][2]).trim();
-    var defaultQty = Number(data[i][3]) || 0;
-    var maxQty = Number(data[i][4]) || 1;
+    var cartVersion = String(data[i][0]).trim(); // A열: 카트버전
+    var category = String(data[i][1]).trim();     // B열: 분류
+    var name = String(data[i][2]).trim();          // C열: 부품명
+    var defaultQty = Number(data[i][3]) || 0;     // D열: 기본수량
+    var maxQty = Number(data[i][4]) || 1;         // E열: 최대수량
+    var newPrice = Number(String(data[i][5]).replace(/,/g, '')) || 0;     // F열: 신품 AS단가
+    var reusedPrice = Number(String(data[i][6]).replace(/,/g, '')) || 0;  // G열: 재활용품 AS단가
 
     // 빈 이름이거나 헤더 키워드와 일치하면 건너뛰기
     if (!name) continue;
@@ -102,10 +105,13 @@ function getPartsList() {
 
     parts.push({
       index: i - 1,
+      cartVersion: cartVersion,
       category: category,
       name: name,
       defaultQty: defaultQty,
-      maxQty: maxQty
+      maxQty: maxQty,
+      newPrice: newPrice,
+      reusedPrice: reusedPrice
     });
   }
 
@@ -320,6 +326,63 @@ function submitRecord(vin, empNo, parts) {
     date: dateStr,
     employee: employeeName,
     message: '탈거 기록이 저장되었습니다.'
+  };
+}
+
+// ============================================================
+// 재사용품 이관 기록
+// ============================================================
+
+function submitTransfer(dateStr, transferType, parts) {
+  if (!dateStr) return { success: false, error: '등록일자를 선택해주세요.' };
+  if (!transferType) return { success: false, error: '이관구분을 선택해주세요.' };
+  if (!parts || parts.length === 0) return { success: false, error: '부품을 선택해주세요.' };
+
+  var sheet = getSheet('5. 재사용품 이관');
+  var lastRow = sheet.getLastRow();
+  var nextRow = Math.max(lastRow + 1, 3); // 최소 3행부터
+
+  // 출고지점 매핑
+  var locationMap = {
+    'QC 검수 완료': '',
+    'SCM 이관': '부곡창고',
+    '화산자원 이관': '화산자원'
+  };
+  var location = locationMap[transferType] !== undefined ? locationMap[transferType] : '';
+
+  var rowsAdded = 0;
+
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    var qty = Number(p.qty) || 0;
+    if (qty <= 0) continue;
+
+    var rowNum = nextRow + rowsAdded;
+    var rowData = [];
+    rowData[0] = dateStr;              // A: 등록일자
+    rowData[1] = transferType;         // B: 이관구분
+    rowData[2] = p.category || '';     // C: 분류
+    rowData[3] = p.name || '';         // D: 부품명
+    rowData[4] = qty;                  // E: 수량
+    rowData[5] = p.newPrice || 0;      // F: 신품 AS단가
+    rowData[6] = qty * (p.newPrice || 0);       // G: 신품 부품금액 (E*F)
+    rowData[7] = p.reusedPrice || 0;   // H: 재사용품 AS단가
+    rowData[8] = qty * (p.reusedPrice || 0);    // I: 재사용 부품금액 (E*H)
+    rowData[9] = rowData[6] - rowData[8];       // J: 절감금액 (G-I)
+    rowData[10] = location;            // K: 출고지점
+    rowData[11] = '';                  // L: 출고날짜
+    rowData[12] = '';                  // M: 특이사항 (빈칸 or 14번째 열)
+    rowData[13] = '';                  // N: (여유)
+
+    sheet.getRange(rowNum, 1, 1, 14).setValues([rowData]);
+    rowsAdded++;
+  }
+
+  return {
+    success: true,
+    rowsAdded: rowsAdded,
+    startRow: nextRow,
+    message: rowsAdded + '건의 이관 기록이 저장되었습니다.'
   };
 }
 

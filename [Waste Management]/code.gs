@@ -137,7 +137,119 @@ function lookupBarcode(barcode) {
 }
 
 // ============================================================
-// 탈거 기록 저장
+// 중복 차대번호 검사
+// ============================================================
+
+function checkDuplicateVin(vin) {
+  if (!vin) return { exists: false };
+
+  var sheet = getSheet('1. 데이터(탈거)');
+  var lastCol = sheet.getLastColumn();
+  var lastRow = sheet.getLastRow();
+  var headerRow = sheet.getRange(3, 1, 1, lastCol).getValues()[0];
+
+  // C열 3행부터 실제 데이터 범위만 읽기
+  if (lastRow < 4) return { exists: false }; // 데이터 없음
+  var cColData = sheet.getRange(4, 3, lastRow - 3, 1).getValues();
+  var searchVin = String(vin).trim();
+
+  for (var r = 0; r < cColData.length; r++) {
+    if (String(cColData[r][0]).trim() === searchVin) {
+      var rowNum = r + 4; // 실제 행 번호 (4행부터 시작)
+      var rowData = sheet.getRange(rowNum, 1, 1, lastCol).getValues()[0];
+
+      // 부품명 → 기존 수량 매핑
+      var existingParts = {};
+      for (var h = 0; h < headerRow.length; h++) {
+        var headerName = String(headerRow[h]).trim();
+        var val = Number(rowData[h]) || 0;
+        if (headerName && val > 0) {
+          existingParts[headerName] = val;
+        }
+      }
+
+      return {
+        exists: true,
+        row: rowNum,
+        employee: String(rowData[3]).trim(),
+        date: String(rowData[4]).trim(),
+        existingParts: existingParts
+      };
+    }
+  }
+
+  return { exists: false };
+}
+
+// ============================================================
+// 기존 행 수정 (업데이트)
+// ============================================================
+
+function updateRecord(row, vin, empNo, parts) {
+  if (!row) return { success: false, error: '수정할 행 정보가 없습니다.' };
+  if (!vin) return { success: false, error: '차대번호가 없습니다.' };
+  if (!empNo) return { success: false, error: '사원번호가 없습니다.' };
+
+  var loginResult = login(empNo);
+  if (!loginResult.valid) {
+    return { success: false, error: loginResult.error };
+  }
+  var employeeName = loginResult.name;
+
+  var sheet = getSheet('1. 데이터(탈거)');
+  var now = new Date();
+  var dateStr = Utilities.formatDate(now, 'Asia/Seoul', 'yyyy-MM-dd');
+
+  var lastCol = sheet.getLastColumn();
+  var headerRow = sheet.getRange(3, 1, 1, lastCol).getValues()[0];
+  var partColumnMap = {};
+  for (var h = 0; h < headerRow.length; h++) {
+    var headerName = String(headerRow[h]).trim();
+    if (headerName) {
+      partColumnMap[headerName] = h;
+    }
+  }
+
+  // 기존 행 데이터 읽기 (A, B열 보존)
+  var existingRow = sheet.getRange(row, 1, 1, lastCol).getValues()[0];
+  var rowData = [];
+  for (var col = 0; col < lastCol; col++) {
+    rowData[col] = existingRow[col]; // 기존 값 유지
+  }
+
+  rowData[2] = String(vin);
+  rowData[3] = employeeName;
+  rowData[4] = dateStr;
+
+  // 부품 열 초기화 후 새 값 세팅
+  for (var p in partColumnMap) {
+    var ci = partColumnMap[p];
+    if (ci >= 5) rowData[ci] = ''; // F열부터 부품 열만 빈칸으로 초기화
+  }
+
+  if (parts && parts.length > 0) {
+    for (var j = 0; j < parts.length; j++) {
+      var partName = String(parts[j].name || '').trim();
+      var qty = Number(parts[j].qty) || 0;
+      if (partColumnMap[partName] !== undefined) {
+        rowData[partColumnMap[partName]] = qty;
+      }
+    }
+  }
+
+  sheet.getRange(row, 1, 1, lastCol).setValues([rowData]);
+
+  return {
+    success: true,
+    row: row,
+    date: dateStr,
+    employee: employeeName,
+    message: '기록이 수정되었습니다.'
+  };
+}
+
+// ============================================================
+// 탈거 기록 저장 (신규)
 // ============================================================
 
 function submitRecord(vin, empNo, parts) {
@@ -186,12 +298,25 @@ function submitRecord(vin, empNo, parts) {
     }
   }
 
-  sheet.appendRow(rowData);
+  // C열(3열) 기준으로 마지막 데이터 행 찾기 (A~B열 데이터 무시)
   var lastRow = sheet.getLastRow();
+  var nextRow = 4; // 최소 4행부터 (1~3행은 헤더)
+  if (lastRow >= 4) {
+    var cColData = sheet.getRange(4, 3, lastRow - 3, 1).getValues();
+    for (var r = cColData.length - 1; r >= 0; r--) {
+      if (String(cColData[r][0]).trim() !== '') {
+        nextRow = r + 5; // 마지막 데이터 행(r+4) + 1
+        break;
+      }
+    }
+  }
+
+  // 해당 행에 직접 기록
+  sheet.getRange(nextRow, 1, 1, totalCols).setValues([rowData]);
 
   return {
     success: true,
-    row: lastRow,
+    row: nextRow,
     date: dateStr,
     employee: employeeName,
     message: '탈거 기록이 저장되었습니다.'

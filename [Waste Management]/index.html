@@ -835,14 +835,11 @@
             <button class="goal-dashboard-btn" onclick="goToGoalEditSelect()">
                 <span class="icon">✏️</span> 2. 목표 수정
             </button>
-            <button class="goal-dashboard-btn" onclick="goToResultSelect(false)">
-                <span class="icon">✍️</span> 3. 결과 작성
-            </button>
-            <button class="goal-dashboard-btn" onclick="goToResultSelect(true)">
-                <span class="icon">🔄</span> 4. 결과 수정
+            <button class="goal-dashboard-btn" onclick="goToResultSelect()">
+                <span class="icon">✍️</span> 3. 결과 작성 및 수정
             </button>
             <button class="goal-dashboard-btn" onclick="goToStatusSelect()">
-                <span class="icon">📊</span> 5. 목표달성 현황
+                <span class="icon">📊</span> 4. 목표달성 현황
             </button>
         </div>
     </div>
@@ -1153,12 +1150,12 @@
     </div>
 
     <!-- ============================================================
-       화면: 결과 작성/수정 (진입)
+       화면: 결과 작성 및 수정 (진입)
        ============================================================ -->
     <div id="screen-result-select" class="screen">
         <div class="header">
             <button class="back-btn" onclick="goToScreen('screen-vin'); switchMainTab('goal')">←</button>
-            <h1 id="resultSelectHeaderTitle">📝 결과 작성</h1>
+            <h1 id="resultSelectHeaderTitle">📝 결과 작성 및 수정</h1>
             <div></div>
         </div>
         <div style="margin-top:16px;">
@@ -1190,7 +1187,7 @@
     <div id="screen-result-detail" class="screen">
         <div class="header">
             <button class="back-btn" onclick="goToScreen('screen-result-select')">←</button>
-            <h1 id="resultDetailHeaderTitle">📝 결과 작성 내용</h1>
+            <h1 id="resultDetailHeaderTitle">📝 결과 작성 및 수정</h1>
             <div></div>
         </div>
         <div style="margin-top:16px;">
@@ -2297,10 +2294,7 @@
         // ============================================================
         // 월 목표 탭: 결과 작성/수정 로직
         // ============================================================
-        function goToResultSelect(isEdit) {
-            isResultEditMode = isEdit;
-            document.getElementById('resultSelectHeaderTitle').innerHTML = isEdit ? '🔄 결과 수정' : '📝 결과 작성';
-            document.getElementById('resultDetailHeaderTitle').innerHTML = isEdit ? '🔄 결과 수정 내용' : '📝 결과 작성 내용';
+        function goToResultSelect() {
             goToScreen('screen-result-select');
         }
 
@@ -2337,8 +2331,7 @@
                         });
                     }
                     
-                    var titlePrefix = isResultEditMode ? '수정' : '작성';
-                    document.getElementById('resultDetailTitle').textContent = year + '년 ' + month + '월 결과 ' + titlePrefix;
+                    document.getElementById('resultDetailTitle').textContent = year + '년 ' + month + '월 결과 작성 및 수정';
                     renderResultPartsList();
                     goToScreen('screen-result-detail');
                 })

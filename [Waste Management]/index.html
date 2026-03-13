@@ -841,7 +841,7 @@
             <button class="goal-dashboard-btn" onclick="goToResultSelect(true)">
                 <span class="icon">🔄</span> 4. 결과 수정
             </button>
-            <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
+            <button class="goal-dashboard-btn" onclick="goToStatusSelect()">
                 <span class="icon">📊</span> 5. 목표달성 현황
             </button>
         </div>
@@ -1228,6 +1228,52 @@
     </div>
 
     <!-- ============================================================
+       화면: 목표달성 현황 (진입)
+       ============================================================ -->
+    <div id="screen-status-select" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-vin'); switchMainTab('goal')">←</button>
+            <h1 id="statusSelectHeaderTitle">📊 목표달성 현황</h1>
+            <div></div>
+        </div>
+        <div style="margin-top:16px;">
+            <div class="card">
+                <div class="card-title">진행 현황을 확인할 년/월 선택</div>
+                <div class="form-group" style="display:flex; gap:12px;">
+                    <div style="flex:1;">
+                        <span class="form-label">해당 년도</span>
+                        <select class="form-select" id="statusYear"></select>
+                    </div>
+                    <div style="flex:1;">
+                        <span class="form-label">해당 월</span>
+                        <select class="form-select" id="statusMonth"></select>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="padding:12px 0 40px;">
+                <button class="btn btn-primary" onclick="handleLoadStatusData()" style="max-width:100%" id="statusLoadBtn">
+                    📥 불러오기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면: 목표달성 현황 상세 (요약표 + 목록)
+       ============================================================ -->
+    <div id="screen-status-detail" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-status-select')">←</button>
+            <h1>📊 목표달성 현황</h1>
+            <div></div>
+        </div>
+        <div style="margin-top:16px;" id="statusDetailContent">
+            <!-- 요약 표시 등 자바스크립트로 렌더링 -->
+        </div>
+    </div>
+
+    <!-- ============================================================
        JavaScript
        ============================================================ -->
     <script>
@@ -1254,7 +1300,11 @@
         var resultCartVersion = 'HY2.0/2.5';
         var resultDataState = {}; // { index: { goal: 0, result: 0 } }
         var targetResultYear = null;
-        var targetResultMonth = null;
+        // 목표달성 현황용 상태 변수
+        var statusCartVersion = 'HY2.0/2.5';
+        var statusDataList = []; // 서버에서 받아온 전체 데이터 (A~L열)
+        var targetStatusYear = null;
+        var targetStatusMonth = null;
 
         // ── 화면 전환 ──
         function goToScreen(screenId) {
@@ -1891,6 +1941,7 @@
             var yearSelect = document.getElementById('goalYear');
             var editYearSelect = document.getElementById('goalEditYear');
             var resultYearSelect = document.getElementById('resultYear');
+            var statusYearSelect = document.getElementById('statusYear');
             var currentYear = new Date().getFullYear();
             for (var y = 2026; y <= 2050; y++) {
                 var option = document.createElement('option');
@@ -1904,12 +1955,16 @@
                 
                 var option3 = option.cloneNode(true);
                 resultYearSelect.appendChild(option3);
+                
+                var option4 = option.cloneNode(true);
+                statusYearSelect.appendChild(option4);
             }
 
             // 목표 월 세팅 (1 ~ 12)
             var monthSelect = document.getElementById('goalMonth');
             var editMonthSelect = document.getElementById('goalEditMonth');
             var resultMonthSelect = document.getElementById('resultMonth');
+            var statusMonthSelect = document.getElementById('statusMonth');
             var currentMonth = new Date().getMonth() + 1;
             for (var m = 1; m <= 12; m++) {
                 var option = document.createElement('option');
@@ -1923,6 +1978,9 @@
                 
                 var option3 = option.cloneNode(true);
                 resultMonthSelect.appendChild(option3);
+                
+                var option4 = option.cloneNode(true);
+                statusMonthSelect.appendChild(option4);
             }
         })();
 
@@ -2401,6 +2459,166 @@
                     showToast('저장 실패: ' + err.message, true);
                 })
                 .saveResultData(targetResultYear, targetResultMonth, selectedParts);
+        }
+
+        // ============================================================
+        // 월 목표 탭: 목표달성 현황 로직
+        // ============================================================
+        function goToStatusSelect() {
+            goToScreen('screen-status-select');
+        }
+
+        function handleLoadStatusData() {
+            var year = document.getElementById('statusYear').value;
+            var month = document.getElementById('statusMonth').value;
+
+            if (!year || !month) {
+                showToast('년/월을 선택해주세요.', true);
+                return;
+            }
+
+            showLoading('현황 데이터를 불러오는 중...');
+            document.getElementById('statusLoadBtn').disabled = true;
+
+            google.script.run
+                .withSuccessHandler(function(data) {
+                    hideLoading();
+                    document.getElementById('statusLoadBtn').disabled = false;
+                    
+                    targetStatusYear = year;
+                    targetStatusMonth = month;
+                    statusDataList = data || []; // 배열 형태로 수신 [{partName, goalQty, resultQty, newPriceSum, reusedPriceSum}, ...]
+                    
+                    renderStatusDetail();
+                    goToScreen('screen-status-detail');
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    document.getElementById('statusLoadBtn').disabled = false;
+                    showToast('데이터 로드 실패: ' + err.message, true);
+                })
+                .getGoalStatusData(year, month);
+        }
+        
+        function selectStatusCartVersion(version) {
+            statusCartVersion = version;
+            renderStatusDetail();
+        }
+
+        function renderStatusDetail() {
+            var container = document.getElementById('statusDetailContent');
+            
+            // 1. 전체 요약표 계산 (모든 카트버전 포함)
+            var totalKinds = 0;   // D열 (부품 수)
+            var totalResult = 0;  // H열 
+            var totalGoal = 0;    // E열 
+            var sumG = 0;         // G열 합계
+            var sumJ = 0;         // J열 합계
+            
+            statusDataList.forEach(function(d) {
+                if (d.goalQty > 0 || d.resultQty > 0) totalKinds++;
+                totalResult += (d.resultQty || 0);
+                totalGoal += (d.goalQty || 0);
+                sumG += (d.newPriceSum || 0);
+                sumJ += (d.reusedPriceSum || 0);
+            });
+            
+            var pctText = "0%";
+            if (totalGoal > 0) {
+                pctText = ((totalResult / totalGoal) * 100).toFixed(1) + "%";
+            }
+            var savingAmt = sumG - sumJ;
+            
+            var html = '';
+            
+            // 상단 년월 타이틀
+            html += '<div class="card" style="margin-bottom:16px;">';
+            html += '  <div style="font-size:16px; font-weight:bold; color:#1976D2;">' + targetStatusYear + '년 ' + targetStatusMonth + '월</div>';
+            html += '</div>';
+            
+            // 요약 테이블
+            html += '<table class="data-table" style="margin-bottom:16px;">';
+            html += '  <thead>';
+            html += '    <tr>';
+            html += '      <th>부품 종류</th>';
+            html += '      <th>탈거 수량</th>';
+            html += '      <th>달성율</th>';
+            html += '      <th>절감액(예상)</th>';
+            html += '    </tr>';
+            html += '  </thead>';
+            html += '  <tbody>';
+            html += '    <tr style="text-align:center; background:#f0f5ff; font-weight:bold;">';
+            html += '      <td>' + totalKinds + '</td>';
+            html += '      <td>' + totalResult + '</td>';
+            html += '      <td>' + pctText + '</td>';
+            html += '      <td>' + Number(savingAmt).toLocaleString() + '원</td>';
+            html += '    </tr>';
+            html += '  </tbody>';
+            html += '</table>';
+            
+            // 카트버전 버튼
+            var isHy2 = (statusCartVersion === 'HY2.0/2.5');
+            var isHy3 = (statusCartVersion === 'HY3.0/3.5');
+            html += '<div class="cart-version-row">';
+            html += '  <button class="cart-btn ' + (isHy2 ? 'active' : '') + '" onclick="selectStatusCartVersion(\'HY2.0/2.5\')">HY2.0/2.5</button>';
+            html += '  <button class="cart-btn ' + (isHy3 ? 'active' : '') + '" onclick="selectStatusCartVersion(\'HY3.0/3.5\')">HY3.0/3.5</button>';
+            html += '</div>';
+            
+            // 리스트 매핑
+            var categoryIcons = {
+                '배터리': '🔋', '냉장고': '🧊', '섀시': '⚙️',
+                '전장': '🔌', '기타': '📦'
+            };
+            
+            var currentCategory = '';
+            var listHtml = '';
+            var hasItems = false;
+            
+            // partsList 순서를 기준으로 하여 지정된 카트버전만 필터
+            var filteredParts = partsList.filter(function(p) { return p.cartVersion === statusCartVersion; });
+            
+            filteredParts.forEach(function(part) {
+                // 이 부품의 현황 데이터 찾기
+                var sData = statusDataList.find(function(d) { return d.partName === part.name; });
+                var goalQty = sData ? (sData.goalQty || 0) : 0;
+                var resQty = sData ? (sData.resultQty || 0) : 0;
+                
+                if (goalQty === 0 && resQty === 0) return; // 내용 없으면 스킵
+                hasItems = true;
+                
+                if (part.category !== currentCategory) {
+                    currentCategory = part.category;
+                    var icon = categoryIcons[currentCategory] || '📦';
+                    listHtml += '<div class="category-header">' + icon + ' ' + currentCategory + '</div>';
+                }
+                
+                var partPct = "0%";
+                if (goalQty > 0) {
+                    partPct = ((resQty / goalQty) * 100).toFixed(0) + "%";
+                } else if (goalQty === 0 && resQty > 0) {
+                    partPct = "∞%"; // 목표 0인데 탈거한 경우
+                }
+                
+                listHtml += '<div class="part-card" style="display:flex; flex-wrap:wrap; align-items:center; border: 1px solid #1976d2; margin-bottom: 8px;">';
+                listHtml += '  <div class="part-name" style="flex:1; min-width:180px;">' + part.name + '</div>';
+                listHtml += '  <div style="font-size:13px; font-weight:bold; color:#D32F2F; margin-right:8px;">[목표: ' + goalQty + ']</div>';
+                listHtml += '  <div style="font-size:13px; font-weight:bold; color:#1976d2; margin-right:8px;">[탈거: ' + resQty + ']</div>';
+                listHtml += '  <div style="font-size:13px; color:#555;">[달성율: ' + partPct + ']</div>';
+                listHtml += '</div>';
+            });
+            
+            if (!hasItems) {
+                listHtml += '<div class="card" style="text-align:center;color:#999;border:0;box-shadow:none;">해당 카트 버전에 등록된 데이터가 없습니다.</div>';
+            }
+            
+            html += listHtml;
+            
+            // 하단 버튼
+            html += '<div style="padding:20px 0 40px;">';
+            html += '  <button class="btn btn-primary" onclick="goToScreen(\'screen-vin\'); switchMainTab(\'goal\');" style="max-width:100%">🏠 홈으로 이동</button>';
+            html += '</div>';
+
+            container.innerHTML = html;
         }
     </script>
 

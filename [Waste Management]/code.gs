@@ -626,6 +626,48 @@ function saveResultData(year, month, parts) {
 }
 
 // ============================================================
+// 목표달성 현황 - 조회 (getGoalStatusData)
+// ============================================================
+function getGoalStatusData(year, month) {
+  if (!year || !month) throw new Error('년/월이 지정되지 않았습니다.');
+  
+  var sheet = getSheet('6. 월 목표');
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 3) return []; // 데이터 없음
+
+  var data = sheet.getRange(3, 1, lastRow - 2, 12).getValues(); // A~L열
+  
+  var result = [];
+  var targetYear = String(year).trim();
+  var targetMonth = String(month).trim();
+
+  for (var i = 0; i < data.length; i++) {
+    var rYear = String(data[i][0]).trim();
+    var rMonth = String(data[i][1]).trim();
+    
+    if (rYear === targetYear && rMonth === targetMonth) {
+      var name = String(data[i][3]).trim();   // D열: 부품명
+      var gQty = Number(data[i][4]) || 0;     // E열: 목표수량
+      var newPriceSum = Number(data[i][6]) || 0; // G열: 신품 A/S 부품금액 합계
+      var rQty = Number(data[i][7]) || 0;     // H열: 탈거수량(결과수량)
+      var reusedPriceSum = Number(data[i][9]) || 0; // J열: 재사용품 A/S 부품금액 합계
+      
+      if (gQty > 0 || rQty > 0) {
+        result.push({
+          partName: name, 
+          goalQty: gQty, 
+          resultQty: rQty,
+          newPriceSum: newPriceSum,
+          reusedPriceSum: reusedPriceSum
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+// ============================================================
 // 사진 업로드 (Google Drive)
 // ============================================================
 

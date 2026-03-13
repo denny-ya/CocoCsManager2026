@@ -1037,10 +1037,6 @@
                     <span class="value" id="gConfirmYearMonth"></span>
                 </div>
                 <div class="info-row">
-                    <span class="label">카트구분</span>
-                    <span class="value" id="gConfirmCartVersion"></span>
-                </div>
-                <div class="info-row">
                     <span class="label">등록자</span>
                     <span class="value" id="gConfirmEmployee"></span>
                 </div>
@@ -1828,7 +1824,6 @@
             }
 
             document.getElementById('gConfirmYearMonth').textContent = year + '년 ' + month + '월';
-            document.getElementById('gConfirmCartVersion').textContent = goalCartVersion;
             document.getElementById('gConfirmEmployee').textContent = currentUser.name + ' (' + currentUser.empNo + ')';
 
             var listHtml = '';

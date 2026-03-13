@@ -435,7 +435,7 @@ function uploadPhoto(base64Data, filename, vin) {
 // 월 목표 등록
 // ============================================================
 
-function submitGoal(year, month, cartVersion, parts) {
+function submitGoal(year, month, _, parts) {
   if (!year || !month) return { success: false, error: '년/월이 지정되지 않았습니다.' };
   if (!parts || parts.length === 0) return { success: false, error: '선택된 부품이 없습니다.' };
 
@@ -444,13 +444,13 @@ function submitGoal(year, month, cartVersion, parts) {
   var nextRow = Math.max(lastRow + 1, 3); // 최소 3행부터 (1,2행은 헤더 가정)
 
   var rowsAdded = 0;
+  var partsList = getPartsList();
 
   // 카트구분 매핑 (ex: HY2.0/2.5 -> H2.0/H2.5)
   var mapping = {
     'HY2.0/2.5': 'H2.0/H2.5',
     'HY3.0/3.5': 'H3.0/H3.5'
   };
-  var mappedCartVersion = mapping[cartVersion] || cartVersion;
 
   for (var i = 0; i < parts.length; i++) {
     var p = parts[i];
@@ -459,21 +459,23 @@ function submitGoal(year, month, cartVersion, parts) {
 
     var rowNum = nextRow + rowsAdded;
     
+    // 부품 정보 조회 (2. 부품명 시트 기준 카트버전 및 단가 확인)
+    var matchPart = partsList.find(function(item) { return item.name === String(p.name); });
+    
+    var originCartVer = matchPart ? (matchPart.cartVersion || '') : '';
+    var mappedCartVersion = mapping[originCartVer] || originCartVer;
+    var newPrice = matchPart ? (matchPart.newPrice || 0) : 0;
+    
     // A~F열 데이터 세팅
     var record = [
       year,                   // A열: 년도
       month,                  // B열: 월
       mappedCartVersion,      // C열: 카트구분
-      String(p.name || ''),           // D열: 부품명
+      String(p.name || ''),   // D열: 부품명
       qty,                    // E열: 목표수량
+      newPrice                // F열: 신품 AS단가
     ];
     
-    // F열 신품 단가는 '2. 부품명' 시트 값 사용. 클라이언트에서 안가져왔으므로 서버에서 직접 조회
-    var partsList = getPartsList();
-    var matchPart = partsList.find(function(item) { return item.name === String(p.name); });
-    var newPrice = matchPart ? (matchPart.newPrice || 0) : 0;
-    record.push(newPrice);    // F열: 신품 AS단가
-
     // A~F열 범위 세팅
     sheet.getRange(rowNum, 1, 1, 6).setValues([record]);
 
@@ -486,7 +488,5 @@ function submitGoal(year, month, cartVersion, parts) {
 
   return {
     success: true,
-    rowsAdded: rowsAdded,
-    message: rowsAdded + '건의 월 목표가 저장되었습니다.'
   };
 }

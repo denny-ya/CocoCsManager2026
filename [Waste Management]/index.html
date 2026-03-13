@@ -734,6 +734,39 @@
             border-color: #1565C0;
             box-shadow: 0 3px 10px rgba(21, 101, 192, 0.3);
         }
+
+        /* ============================================================
+       테이블 스타일
+       ============================================================ */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            font-size: 14px;
+        }
+
+        .data-table th, .data-table td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+
+        .data-table th {
+            background: #1976D2;
+            color: white;
+            font-weight: 600;
+        }
+
+        .data-table td:first-child, .data-table th:first-child {
+            border-left: none;
+        }
+
+        .data-table td:last-child, .data-table th:last-child {
+            border-right: none;
+        }
     </style>
     <script src="https://unpkg.com/@aspect-build/aspect-barcode@0.1.0/dist/barcode.min.js"
         onerror="console.log('External barcode lib not loaded')"></script>

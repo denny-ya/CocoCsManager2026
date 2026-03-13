@@ -508,6 +508,124 @@ function updateGoalData(year, month, parts) {
 }
 
 // ============================================================
+// 결과 작성 - 조회 (getResultData)
+// ============================================================
+function getResultData(year, month) {
+  if (!year || !month) throw new Error('년/월이 지정되지 않았습니다.');
+  
+  var sheet = getSheet('6. 월 목표');
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 3) return []; // 데이터 없음
+
+  var data = sheet.getRange(3, 1, lastRow - 2, 8).getValues(); // A~H열
+  
+  var result = [];
+  var targetYear = String(year).trim();
+  var targetMonth = String(month).trim();
+
+  for (var i = 0; i < data.length; i++) {
+    var rYear = String(data[i][0]).trim();
+    var rMonth = String(data[i][1]).trim();
+    
+    if (rYear === targetYear && rMonth === targetMonth) {
+      var name = String(data[i][3]).trim();   // D열: 부품명
+      var gQty = Number(data[i][4]) || 0;     // E열: 목표수량
+      var rQty = Number(data[i][7]) || 0;     // H열: 탈거수량(결과수량)
+      
+      if (gQty > 0 || rQty > 0) {
+        result.push({ name: name, goalQty: gQty, resultQty: rQty });
+      }
+    }
+  }
+
+  return result;
+}
+
+// ============================================================
+// 결과 작성 - 저장 (saveResultData)
+// ============================================================
+function saveResultData(year, month, parts) {
+  if (!year || !month) return { success: false, error: '년/월이 지정되지 않았습니다.' };
+  if (!parts) return { success: false, error: '선택된 부품이 없습니다.' };
+
+  var sheet = getSheet('6. 월 목표');
+  var lastRow = sheet.getLastRow();
+  
+  var targetYear = String(year).trim();
+  var targetMonth = String(month).trim();
+  var partsList = getPartsList();
+  var mapping = { 'HY2.0/2.5': 'H2.0/H2.5', 'HY3.0/3.5': 'H3.0/H3.5' };
+
+  var rowsUpdated = 0;
+  var rowsAdded = 0;
+
+  // 1. 기존 데이터 매핑 (A~D열)
+  var existingMap = {}; // { partName: rowNumber (1-based) }
+  if (lastRow >= 3) {
+    var datesData = sheet.getRange(3, 1, lastRow - 2, 4).getValues();
+    for (var i = 0; i < datesData.length; i++) {
+      var rYear = String(datesData[i][0]).trim();
+      var rMonth = String(datesData[i][1]).trim();
+      if (rYear === targetYear && rMonth === targetMonth) {
+        var partName = String(datesData[i][3]).trim();
+        existingMap[partName] = i + 3; 
+      }
+    }
+  }
+
+  // 2. 부품별 순회 - 존재하는 부품은 H~L 갱신, 없는 부품은 A~L 신규 추가
+  for (var j = 0; j < parts.length; j++) {
+    var p = parts[j];
+    var rQty = Number(p.qty) || 0;
+    var pName = String(p.name || '').trim();
+
+    var matchPart = partsList.find(function(item) { return item.name === pName; });
+    var reusedPrice = matchPart ? (matchPart.reusedPrice || 0) : 0;
+    var newPrice = matchPart ? (matchPart.newPrice || 0) : 0;
+    var originVer = matchPart ? (matchPart.cartVersion || '') : '';
+    var mappedVer = mapping[originVer] || originVer;
+
+    if (existingMap[pName]) {
+      // (1) 기존 부품이 있음 -> H~L 갱신
+      var rIndex = existingMap[pName];
+      sheet.getRange(rIndex, 8).setValue(rQty);            // H열: 탈거결과 수량
+      sheet.getRange(rIndex, 9).setValue(reusedPrice);     // I열: 재사용품 단가
+      sheet.getRange(rIndex, 10).setFormula('=H' + rIndex + '*I' + rIndex); // J열
+      sheet.getRange(rIndex, 11).setFormula('=IF(E' + rIndex + '>0, H' + rIndex + '/E' + rIndex + ', "")'); // K열
+      sheet.getRange(rIndex, 12).setFormula('=G' + rIndex + '-J' + rIndex); // L열
+      rowsUpdated++;
+    } else {
+      // (2) 기존 부품이 없음 (목표 등록시 누락된 부품) -> 하단에 새로 추가
+      if (rQty > 0) {
+        var newRow = sheet.getLastRow() + 1;
+        var newRecord = [
+          year,         // A열
+          month,        // B열
+          mappedVer,    // C열
+          pName,        // D열
+          0,            // E열 (목표수량 0)
+          newPrice,     // F열
+          0,            // G열 (A/S 부품금액 0 - 이건 =E*F 할거지만 어차피 0)
+          rQty,         // H열
+          reusedPrice   // I열
+        ];
+        sheet.getRange(newRow, 1, 1, 9).setValues([newRecord]);
+        sheet.getRange(newRow, 7).setFormula('=E' + newRow + '*F' + newRow);
+        sheet.getRange(newRow, 10).setFormula('=H' + newRow + '*I' + newRow);
+        sheet.getRange(newRow, 11).setFormula('=IF(E' + newRow + '>0, H' + newRow + '/E' + newRow + ', "")');
+        sheet.getRange(newRow, 12).setFormula('=G' + newRow + '-J' + newRow);
+        rowsAdded++;
+      }
+    }
+  }
+
+  return {
+    success: true,
+    message: rowsUpdated + '건 수정, ' + rowsAdded + '건 신규 등록으로 성공적으로 결과가 저장되었습니다.'
+  };
+}
+
+// ============================================================
 // 사진 업로드 (Google Drive)
 // ============================================================
 

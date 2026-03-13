@@ -835,10 +835,10 @@
             <button class="goal-dashboard-btn" onclick="goToGoalEditSelect()">
                 <span class="icon">✏️</span> 2. 목표 수정
             </button>
-            <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
+            <button class="goal-dashboard-btn" onclick="goToResultSelect(false)">
                 <span class="icon">✍️</span> 3. 결과 작성
             </button>
-            <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
+            <button class="goal-dashboard-btn" onclick="goToResultSelect(true)">
                 <span class="icon">🔄</span> 4. 결과 수정
             </button>
             <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
@@ -1153,6 +1153,81 @@
     </div>
 
     <!-- ============================================================
+       화면: 결과 작성/수정 (진입)
+       ============================================================ -->
+    <div id="screen-result-select" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-vin'); switchMainTab('goal')">←</button>
+            <h1 id="resultSelectHeaderTitle">📝 결과 작성</h1>
+            <div></div>
+        </div>
+        <div style="margin-top:16px;">
+            <div class="card">
+                <div class="card-title">불러올 년/월 선택</div>
+                <div class="form-group" style="display:flex; gap:12px;">
+                    <div style="flex:1;">
+                        <span class="form-label">해당 년도</span>
+                        <select class="form-select" id="resultYear"></select>
+                    </div>
+                    <div style="flex:1;">
+                        <span class="form-label">해당 월</span>
+                        <select class="form-select" id="resultMonth"></select>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="padding:12px 0 40px;">
+                <button class="btn btn-primary" onclick="handleLoadResultData()" style="max-width:100%" id="resultLoadBtn">
+                    📥 불러오기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면: 결과 부분 상세 수량 입력 화면
+       ============================================================ -->
+    <div id="screen-result-detail" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-result-select')">←</button>
+            <h1 id="resultDetailHeaderTitle">📝 결과 작성 내용</h1>
+            <div></div>
+        </div>
+        <div style="margin-top:16px;">
+            <div class="card" style="margin-bottom:16px;">
+                <div style="font-size:16px; font-weight:bold; color:#1976D2;" id="resultDetailTitle"></div>
+            </div>
+
+            <!-- 카트버전 버튼 유지 -->
+            <div class="cart-version-row">
+                <button class="cart-btn active" id="resultCartBtn1" onclick="selectResultCartVersion('HY2.0/2.5')">HY2.0/2.5</button>
+                <button class="cart-btn" id="resultCartBtn2" onclick="selectResultCartVersion('HY3.0/3.5')">HY3.0/3.5</button>
+            </div>
+
+            <div id="resultPartsListContainer"></div>
+            
+            <div style="padding:12px 0 40px;">
+                <button class="btn btn-success" onclick="handleResultUpdate()" style="max-width:100%" id="resultUpdateBtn">
+                    📤 저장 완료
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면: 결과 저장 성공
+       ============================================================ -->
+    <div id="screen-result-success" class="screen">
+        <div class="success-container">
+            <div class="success-icon">✅</div>
+            <div class="success-title" id="resultSuccessTitle">저장 완료!</div>
+            <button class="btn btn-primary" onclick="goToScreen('screen-vin'); switchMainTab('goal')">
+                🏠 월 목표 홈으로
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
        JavaScript
        ============================================================ -->
     <script>
@@ -1167,11 +1242,19 @@
         var transferCartVersion = 'HY2.0/2.5';  // 이관 탭 카트버전
         var goalCartVersion = 'HY2.0/2.5';      // 월 목표 탭 카트버전
         var goalPartsQty = {};    // { index: qty } 월 목표 부품 수량
-        // 수정용 상태 변수
+        
+        // 목표 수정용 상태 변수
         var goalEditCartVersion = 'HY2.0/2.5';
-        var goalEditPartsQty = {}; // 불러온 기존 수량 (및 수정 중 수량) { partName: qty } 형태 유지 또는 index 유지
+        var goalEditPartsQty = {}; 
         var targetEditYear = null;
         var targetEditMonth = null;
+        
+        // 결과 작성/수정용 상태 변수
+        var isResultEditMode = false;
+        var resultCartVersion = 'HY2.0/2.5';
+        var resultDataState = {}; // { index: { goal: 0, result: 0 } }
+        var targetResultYear = null;
+        var targetResultMonth = null;
 
         // ── 화면 전환 ──
         function goToScreen(screenId) {
@@ -1807,6 +1890,7 @@
             // 목표 년도 세팅 (2026 ~ 2050)
             var yearSelect = document.getElementById('goalYear');
             var editYearSelect = document.getElementById('goalEditYear');
+            var resultYearSelect = document.getElementById('resultYear');
             var currentYear = new Date().getFullYear();
             for (var y = 2026; y <= 2050; y++) {
                 var option = document.createElement('option');
@@ -1817,11 +1901,15 @@
                 
                 var option2 = option.cloneNode(true);
                 editYearSelect.appendChild(option2);
+                
+                var option3 = option.cloneNode(true);
+                resultYearSelect.appendChild(option3);
             }
 
             // 목표 월 세팅 (1 ~ 12)
             var monthSelect = document.getElementById('goalMonth');
             var editMonthSelect = document.getElementById('goalEditMonth');
+            var resultMonthSelect = document.getElementById('resultMonth');
             var currentMonth = new Date().getMonth() + 1;
             for (var m = 1; m <= 12; m++) {
                 var option = document.createElement('option');
@@ -1832,6 +1920,9 @@
                 
                 var option2 = option.cloneNode(true);
                 editMonthSelect.appendChild(option2);
+                
+                var option3 = option.cloneNode(true);
+                resultMonthSelect.appendChild(option3);
             }
         })();
 
@@ -2143,6 +2234,173 @@
                     showToast('수정 실패: ' + err.message, true);
                 })
                 .updateGoalData(targetEditYear, targetEditMonth, selectedParts);
+        }
+
+        // ============================================================
+        // 월 목표 탭: 결과 작성/수정 로직
+        // ============================================================
+        function goToResultSelect(isEdit) {
+            isResultEditMode = isEdit;
+            document.getElementById('resultSelectHeaderTitle').innerHTML = isEdit ? '🔄 결과 수정' : '📝 결과 작성';
+            document.getElementById('resultDetailHeaderTitle').innerHTML = isEdit ? '🔄 결과 수정 내용' : '📝 결과 작성 내용';
+            goToScreen('screen-result-select');
+        }
+
+        function handleLoadResultData() {
+            var year = document.getElementById('resultYear').value;
+            var month = document.getElementById('resultMonth').value;
+
+            if (!year || !month) {
+                showToast('년/월을 선택해주세요.', true);
+                return;
+            }
+
+            showLoading('결과 데이터를 불러오는 중...');
+            document.getElementById('resultLoadBtn').disabled = true;
+
+            google.script.run
+                .withSuccessHandler(function(data) {
+                    hideLoading();
+                    document.getElementById('resultLoadBtn').disabled = false;
+                    
+                    targetResultYear = year;
+                    targetResultMonth = month;
+                    
+                    resultDataState = {};
+                    if (data && data.length > 0) {
+                        data.forEach(function(d) {
+                            var pItem = partsList.find(function(p) { return p.name === d.name; });
+                            if (pItem) {
+                                resultDataState[pItem.index] = {
+                                    goal: d.goalQty || 0,
+                                    result: d.resultQty || 0
+                                };
+                            }
+                        });
+                    }
+                    
+                    var titlePrefix = isResultEditMode ? '수정' : '작성';
+                    document.getElementById('resultDetailTitle').textContent = year + '년 ' + month + '월 결과 ' + titlePrefix;
+                    renderResultPartsList();
+                    goToScreen('screen-result-detail');
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    document.getElementById('resultLoadBtn').disabled = false;
+                    showToast('데이터 로드 실패: ' + err.message, true);
+                })
+                .getResultData(year, month);
+        }
+
+        function renderResultPartsList() {
+            var container = document.getElementById('resultPartsListContainer');
+            if (!partsList || partsList.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align:center;color:#999;">부품 목록을 불러오는 중...</div>';
+                return;
+            }
+
+            var filtered = partsList.filter(function(p) { return p.cartVersion === resultCartVersion; });
+            var categoryIcons = {
+                '배터리': '🔋', '냉장고': '🧊', '섀시': '⚙️',
+                '전장': '🔌', '기타': '📦'
+            };
+
+            var html = '';
+            var currentCategory = '';
+
+            filtered.forEach(function(part) {
+                if (part.category !== currentCategory) {
+                    currentCategory = part.category;
+                    var icon = categoryIcons[currentCategory] || '📦';
+                    var catCount = filtered.filter(function(p) { return p.category === currentCategory; }).length;
+                    html += '<div class="category-header">' + icon + ' ' + currentCategory;
+                    html += ' <span class="category-badge">' + catCount + '개</span>';
+                    html += '</div>';
+                }
+
+                var state = resultDataState[part.index] || { goal: 0, result: 0 };
+                var hasGoalOrResult = state.goal > 0 || state.result > 0;
+
+                html += '<div class="part-card' + (hasGoalOrResult ? ' selected' : '') + '">';
+                html += '  <div class="part-name">' + part.name;
+                // 목표값 별도 출력 (빨간 펜 모양 느낌 내려면 스타일링 추가 가능)
+                if (state.goal > 0) {
+                    html += ' <span style="color:#D32F2F; font-size:14px; font-weight:bold; margin-left:8px;">[목표: ' + state.goal + ']</span>';
+                }
+                html += '  </div>';
+                html += '  <div class="stepper">';
+                html += '    <button onclick="changeResultQty(' + part.index + ',-1)"' + (state.result <= 0 ? ' disabled' : '') + '>−</button>';
+                html += '    <input type="number" class="qty" value="' + state.result + '" min="0" style="width:50px;border:none;font-size:16px;font-weight:700;color:#1565C0;text-align:center;background:transparent;-moz-appearance:textfield;" onchange="setResultQty(' + part.index + ', this.value)" onclick="this.select()">';
+                html += '    <button onclick="changeResultQty(' + part.index + ',1)">+</button>';
+                html += '  </div>';
+                html += '</div>';
+            });
+
+            container.innerHTML = html;
+        }
+
+        function selectResultCartVersion(version) {
+            resultCartVersion = version;
+            document.getElementById('resultCartBtn1').classList.toggle('active', version === 'HY2.0/2.5');
+            document.getElementById('resultCartBtn2').classList.toggle('active', version === 'HY3.0/3.5');
+            renderResultPartsList();
+        }
+
+        function changeResultQty(partIndex, delta) {
+            initResultState(partIndex);
+            var current = resultDataState[partIndex].result;
+            var newQty = Math.max(0, current + delta);
+            resultDataState[partIndex].result = newQty;
+            renderResultPartsList();
+        }
+
+        function setResultQty(partIndex, value) {
+            initResultState(partIndex);
+            var qty = Math.max(0, parseInt(value) || 0);
+            resultDataState[partIndex].result = qty;
+            renderResultPartsList();
+        }
+        
+        function initResultState(partIndex) {
+            if (!resultDataState[partIndex]) resultDataState[partIndex] = {goal:0, result:0};
+        }
+
+        function handleResultUpdate() {
+            var selectedParts = [];
+            for (var idx in resultDataState) {
+                var state = resultDataState[idx];
+                // 결과 수량이 0 초과인 항목들만 서버에 전송 (0으로 바뀐 건도 0으로 전송)
+                var part = partsList.find(function(p) { return p.index === parseInt(idx); });
+                if (part) {
+                    selectedParts.push({
+                        name: part.name,
+                        qty: state.result
+                    });
+                }
+            }
+
+            if (!targetResultYear || !targetResultMonth) return;
+            
+            showLoading('결과 데이터 반영 중...');
+            document.getElementById('resultUpdateBtn').disabled = true;
+
+            google.script.run
+                .withSuccessHandler(function(result) {
+                    hideLoading();
+                    document.getElementById('resultUpdateBtn').disabled = false;
+                    if (result.success) {
+                        document.getElementById('resultSuccessTitle').textContent = result.message;
+                        goToScreen('screen-result-success');
+                    } else {
+                        showToast(result.error, true);
+                    }
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    document.getElementById('resultUpdateBtn').disabled = false;
+                    showToast('저장 실패: ' + err.message, true);
+                })
+                .saveResultData(targetResultYear, targetResultMonth, selectedParts);
         }
     </script>
 

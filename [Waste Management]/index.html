@@ -626,7 +626,40 @@
         }
 
         /* ============================================================
-       재사용품 이관 폼
+       월 목표 탭 (메인 버튼)
+       ============================================================ */
+        .goal-dashboard-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            padding: 20px;
+            margin-bottom: 16px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .goal-dashboard-btn:hover {
+            border-color: #1976D2;
+            color: #1976D2;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(25, 118, 210, 0.15);
+        }
+
+        .goal-dashboard-btn .icon {
+            font-size: 24px;
+        }
+
+        /* ============================================================
+       재사용품 이관 폼 & 월 목표 폼 공통
        ============================================================ */
         .form-group {
             margin-bottom: 16px;
@@ -795,10 +828,16 @@
             </div>
         </div>
         <!-- 월 목표 탭 내용 -->
-        <div id="main-tab-goal" style="display:none; text-align:center; padding:80px 20px; color:#888;">
-            <div style="font-size:48px; margin-bottom:16px;">📊</div>
-            <div style="font-size:16px; font-weight:600;">월 목표</div>
-            <div style="font-size:13px; margin-top:8px;">준비 중입니다...</div>
+        <div id="main-tab-goal" style="display:none; margin-top:20px;">
+            <button class="goal-dashboard-btn" onclick="goToGoalRegister()">
+                <span class="icon">📝</span> 1. 목표 등록
+            </button>
+            <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
+                <span class="icon">✍️</span> 2. 결과 작성
+            </button>
+            <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
+                <span class="icon">📊</span> 3. 목표달성 현황
+            </button>
         </div>
     </div>
 
@@ -946,6 +985,97 @@
     </div>
 
     <!-- ============================================================
+       화면: 월 목표 - 목표 등록
+       ============================================================ -->
+    <div id="screen-goal-register" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-vin'); switchMainTab('goal')">←</button>
+            <h1>📝 목표 등록</h1>
+            <div></div>
+        </div>
+        <div style="margin-top:16px;">
+            <div class="form-group" style="display:flex; gap:12px;">
+                <div style="flex:1;">
+                    <span class="form-label">적용 년도</span>
+                    <select class="form-select" id="goalYear"></select>
+                </div>
+                <div style="flex:1;">
+                    <span class="form-label">적용 월</span>
+                    <select class="form-select" id="goalMonth"></select>
+                </div>
+            </div>
+            
+            <div class="cart-version-row">
+                <button class="cart-btn active" id="goalCartBtn1" onclick="selectGoalCartVersion('HY2.0/2.5')">HY2.0/2.5</button>
+                <button class="cart-btn" id="goalCartBtn2" onclick="selectGoalCartVersion('HY3.0/3.5')">HY3.0/3.5</button>
+            </div>
+            
+            <div id="goalPartsListContainer"></div>
+            
+            <div style="padding:12px 0 40px;">
+                <button class="btn btn-primary" onclick="goToGoalConfirm()" style="max-width:100%">
+                    📋 확인 & 제출 →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면: 월 목표 - 목표 등록 확인
+       ============================================================ -->
+    <div id="screen-goal-confirm" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-goal-register')">←</button>
+            <h1>📋 목표 등록 확인</h1>
+            <div></div>
+        </div>
+        <div style="margin-top: 16px;">
+            <div class="card">
+                <div class="card-title">📅 목표 등록 정보</div>
+                <div class="info-row">
+                    <span class="label">등록년월</span>
+                    <span class="value" id="gConfirmYearMonth"></span>
+                </div>
+                <div class="info-row">
+                    <span class="label">카트구분</span>
+                    <span class="value" id="gConfirmCartVersion"></span>
+                </div>
+                <div class="info-row">
+                    <span class="label">등록자</span>
+                    <span class="value" id="gConfirmEmployee"></span>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">🔧 부품별 목표 수량(탈거)</div>
+                <div id="gConfirmPartsList"></div>
+            </div>
+            <button class="btn btn-success" onclick="handleGoalSubmit()" style="max-width:100%" id="goalSubmitBtn">
+                📤 스프레드시트에 저장
+            </button>
+            <button class="btn btn-outline" onclick="goToScreen('screen-goal-register')" style="max-width:100%">
+                ← 수정하기
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면: 월 목표 - 저장 성공
+       ============================================================ -->
+    <div id="screen-goal-success" class="screen">
+        <div class="success-container">
+            <div class="success-icon">✅</div>
+            <div class="success-title">목표 등록 완료!</div>
+            <div class="success-sub" id="goalSuccessMsg">스프레드시트에 기록되었습니다.</div>
+            <button class="btn btn-primary" onclick="resetGoalRegister()">
+                🔄 새 목표 등록
+            </button>
+            <button class="btn btn-outline" style="margin-top:12px;" onclick="goToScreen('screen-vin'); switchMainTab('goal')">
+                🏠 월 목표 홈으로
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
        JavaScript
        ============================================================ -->
     <script>
@@ -958,6 +1088,8 @@
         var editRow = null;       // 수정할 행 번호
         var regCartVersion = 'HY2.0/2.5';       // 등록 탭 카트버전
         var transferCartVersion = 'HY2.0/2.5';   // 이관 탭 카트버전
+        var goalCartVersion = 'HY2.0/2.5';       // 월 목표 탭 카트버전
+        var goalPartsQty = {};    // { index: qty } 월 목표 부품 수량
 
         // ── 화면 전환 ──
         function goToScreen(screenId) {
@@ -1030,6 +1162,7 @@
                     partsList = result;
                     renderPartsList();
                     renderTransferPartsList();
+                    renderGoalPartsList();
                 })
                 .withFailureHandler(function (err) {
                     showToast('부품 목록 로딩 실패: ' + err.message, true);
@@ -1585,10 +1718,180 @@
                 String(now.getDate()).padStart(2, '0');
         }
 
-        // 초기화: 오늘 날짜 세팅
+        // 초기화: 오늘 날짜 세팅 및 년/월 Select 세팅
         (function() {
             document.getElementById('transferDate').value = getTodayStr();
+
+            // 목표 년도 세팅 (2026 ~ 2050)
+            var yearSelect = document.getElementById('goalYear');
+            var currentYear = new Date().getFullYear();
+            for (var y = 2026; y <= 2050; y++) {
+                var option = document.createElement('option');
+                option.value = y;
+                option.text = y + '년';
+                if (y === currentYear) option.selected = true;
+                yearSelect.appendChild(option);
+            }
+
+            // 목표 월 세팅 (1 ~ 12)
+            var monthSelect = document.getElementById('goalMonth');
+            var currentMonth = new Date().getMonth() + 1;
+            for (var m = 1; m <= 12; m++) {
+                var option = document.createElement('option');
+                option.value = m;
+                option.text = m + '월';
+                if (m === currentMonth) option.selected = true;
+                monthSelect.appendChild(option);
+            }
         })();
+
+        // ============================================================
+        // 월 목표 탭: 목표 등록 로직
+        // ============================================================
+        function goToGoalRegister() {
+            renderGoalPartsList();
+            goToScreen('screen-goal-register');
+        }
+
+        function renderGoalPartsList() {
+            var container = document.getElementById('goalPartsListContainer');
+            if (!partsList || partsList.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align:center;color:#999;">부품 목록을 불러오는 중...</div>';
+                return;
+            }
+
+            var filtered = partsList.filter(function(p) { return p.cartVersion === goalCartVersion; });
+            var categoryIcons = {
+                '배터리': '🔋', '냉장고': '🧊', '섀시': '⚙️',
+                '전장': '🔌', '기타': '📦'
+            };
+
+            var html = '';
+            var currentCategory = '';
+
+            filtered.forEach(function(part) {
+                if (part.category !== currentCategory) {
+                    currentCategory = part.category;
+                    var icon = categoryIcons[currentCategory] || '📦';
+                    var catCount = filtered.filter(function(p) { return p.category === currentCategory; }).length;
+                    html += '<div class="category-header">' + icon + ' ' + currentCategory;
+                    html += ' <span class="category-badge">' + catCount + '개</span>';
+                    html += '</div>';
+                }
+
+                var qty = goalPartsQty[part.index] || 0;
+                var isSelected = qty > 0;
+
+                html += '<div class="part-card' + (isSelected ? ' selected' : '') + '">';
+                html += '  <div class="part-name">' + part.name + '</div>';
+                html += '  <div class="stepper">';
+                html += '    <button onclick="changeGoalQty(' + part.index + ',-1)"' + (qty <= 0 ? ' disabled' : '') + '>−</button>';
+                html += '    <input type="number" class="qty" value="' + qty + '" min="0" style="width:50px;border:none;font-size:16px;font-weight:700;color:#1565C0;text-align:center;background:transparent;-moz-appearance:textfield;" onchange="setGoalQty(' + part.index + ', this.value)" onclick="this.select()">';
+                html += '    <button onclick="changeGoalQty(' + part.index + ',1)">+</button>';
+                html += '  </div>';
+                html += '</div>';
+            });
+
+            container.innerHTML = html;
+        }
+
+        function selectGoalCartVersion(version) {
+            goalCartVersion = version;
+            document.getElementById('goalCartBtn1').classList.toggle('active', version === 'HY2.0/2.5');
+            document.getElementById('goalCartBtn2').classList.toggle('active', version === 'HY3.0/3.5');
+            renderGoalPartsList();
+        }
+
+        function changeGoalQty(partIndex, delta) {
+            var current = goalPartsQty[partIndex] || 0;
+            var newQty = Math.max(0, current + delta);
+            if (newQty === 0) delete goalPartsQty[partIndex];
+            else goalPartsQty[partIndex] = newQty;
+            renderGoalPartsList();
+        }
+
+        function setGoalQty(partIndex, value) {
+            var qty = Math.max(0, parseInt(value) || 0);
+            if (qty === 0) delete goalPartsQty[partIndex];
+            else goalPartsQty[partIndex] = qty;
+            renderGoalPartsList();
+        }
+
+        function goToGoalConfirm() {
+            var year = document.getElementById('goalYear').value;
+            var month = document.getElementById('goalMonth').value;
+
+            var selectedParts = getGoalSelectedParts();
+            if (selectedParts.length === 0) {
+                showToast('목표 수량이 입력된 부품이 없습니다.', true);
+                return;
+            }
+
+            document.getElementById('gConfirmYearMonth').textContent = year + '년 ' + month + '월';
+            document.getElementById('gConfirmCartVersion').textContent = goalCartVersion;
+            document.getElementById('gConfirmEmployee').textContent = currentUser.name + ' (' + currentUser.empNo + ')';
+
+            var listHtml = '';
+            selectedParts.forEach(function(sp) {
+                listHtml += '<div class="summary-item">';
+                listHtml += '  <span class="part-info">' + sp.name + '</span>';
+                listHtml += '  <span class="part-qty">' + sp.qty + '개</span>';
+                listHtml += '</div>';
+            });
+            document.getElementById('gConfirmPartsList').innerHTML = listHtml;
+
+            goToScreen('screen-goal-confirm');
+        }
+
+        function getGoalSelectedParts() {
+            var selected = [];
+            for (var idx in goalPartsQty) {
+                if (goalPartsQty[idx] > 0) {
+                    var part = partsList.find(function(p) { return p.index === parseInt(idx); });
+                    if (part) {
+                        selected.push({
+                            name: part.name,
+                            qty: goalPartsQty[idx]
+                        });
+                    }
+                }
+            }
+            return selected;
+        }
+
+        function handleGoalSubmit() {
+            var year = document.getElementById('goalYear').value;
+            var month = document.getElementById('goalMonth').value;
+            var selectedParts = getGoalSelectedParts();
+
+            showLoading('월 목표 저장 중...');
+            document.getElementById('goalSubmitBtn').disabled = true;
+
+            google.script.run
+                .withSuccessHandler(function(result) {
+                    hideLoading();
+                    document.getElementById('goalSubmitBtn').disabled = false;
+                    if (result.success) {
+                        document.getElementById('goalSuccessMsg').textContent = result.message;
+                        goToScreen('screen-goal-success');
+                    } else {
+                        showToast(result.error, true);
+                    }
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    document.getElementById('goalSubmitBtn').disabled = false;
+                    showToast('저장 실패: ' + err.message, true);
+                })
+                .submitGoal(year, month, goalCartVersion, selectedParts);
+        }
+
+        function resetGoalRegister() {
+            goalPartsQty = {};
+            // 년/월은 현재 선택된 상태 유지
+            renderGoalPartsList();
+            goToScreen('screen-goal-register');
+        }
     </script>
 
 </body>

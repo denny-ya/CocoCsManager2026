@@ -381,8 +381,129 @@ function submitTransfer(dateStr, transferType, parts) {
   return {
     success: true,
     rowsAdded: rowsAdded,
-    startRow: nextRow,
-    message: rowsAdded + '건의 이관 기록이 저장되었습니다.'
+    message: rowsAdded + '건의 월 목표가 저장되었습니다.'
+  };
+}
+
+// ============================================================
+// 월 목표 - 수정 시 조회 (getGoalData)
+// ============================================================
+function getGoalData(year, month) {
+  if (!year || !month) throw new Error('년/월이 지정되지 않았습니다.');
+  
+  var sheet = getSheet('6. 월 목표');
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 3) return []; // 데이터 없음
+
+  var data = sheet.getRange(3, 1, lastRow - 2, 5).getValues(); // A~E열
+  
+  var result = [];
+  var targetYear = String(year).trim();
+  var targetMonth = String(month).trim();
+
+  for (var i = 0; i < data.length; i++) {
+    var rYear = String(data[i][0]).trim();
+    var rMonth = String(data[i][1]).trim();
+    
+    if (rYear === targetYear && rMonth === targetMonth) {
+      var name = String(data[i][3]).trim(); // D열: 부품명
+      var qty = Number(data[i][4]) || 0;    // E열: 목표수량
+      if (qty > 0) {
+        result.push({ name: name, qty: qty });
+      }
+    }
+  }
+
+  return result;
+}
+
+// ============================================================
+// 월 목표 - 수정 반영 (updateGoalData)
+// ============================================================
+function updateGoalData(year, month, parts) {
+  if (!year || !month) return { success: false, error: '년/월이 지정되지 않았습니다.' };
+  
+  var sheet = getSheet('6. 월 목표');
+  var lastRow = sheet.getLastRow();
+  
+  var targetYear = String(year).trim();
+  var targetMonth = String(month).trim();
+
+  // 1. 기존 데이터 찾아서 전부 일괄 삭제 (역순으로 지워야 행 번호 밀림 방지 가능)
+  // 단, 행 삭제를 반복하면 느려질 수 있으므로, 이번엔 삭제 대상 행을 모아서 밑에서부터 차례로 삭제
+  if (lastRow >= 3) {
+    var datesData = sheet.getRange(3, 1, lastRow - 2, 2).getValues(); // A, B열만 조회
+    var rowsToDelete = [];
+    
+    for (var i = 0; i < datesData.length; i++) {
+      var rYear = String(datesData[i][0]).trim();
+      var rMonth = String(datesData[i][1]).trim();
+      
+      if (rYear === targetYear && rMonth === targetMonth) {
+        rowsToDelete.push(i + 3); // 실제 행 번호 (3행부터 시작하므로 +3)
+      }
+    }
+    
+    // 역순 삭제
+    for (var d = rowsToDelete.length - 1; d >= 0; d--) {
+      sheet.deleteRow(rowsToDelete[d]);
+    }
+  }
+
+  // 2. 만약 수량이 다 0이라 부품이 하나도 없다면, 그냥 삭제된 상태로 끝.
+  if (!parts || parts.length === 0) {
+    return {
+      success: true,
+      message: '해당 개월의 월 목표가 모두 삭제되었습니다.'
+    };
+  }
+
+  // 3. 삭제 후 새로운 행 추가 (submitGoal 로직 재활용. 단, 여기선 카트구분 토글값을 ui에서 안받아왔으므로, 부품의 첫번째의 origin version을 찾아서 넣음)
+  var partsList = getPartsList();
+  
+  // 카트구분 매핑 (ex: HY2.0/2.5 -> H2.0/H2.5)
+  var mapping = {
+    'HY2.0/2.5': 'H2.0/H2.5',
+    'HY3.0/3.5': 'H3.0/H3.5'
+  };
+
+  var rowsAdded = 0;
+  // deleteRow 이후 lastRow 변동
+  lastRow = sheet.getLastRow();
+  var nextRow = Math.max(lastRow + 1, 3);
+  
+  for (var j = 0; j < parts.length; j++) {
+    var p = parts[j];
+    var qty = Number(p.qty) || 0;
+    if (qty <= 0) continue;
+
+    var rowNum = nextRow + rowsAdded;
+    
+    // 부품 정보 조회
+    var matchPart = partsList.find(function(item) { return item.name === String(p.name); });
+    var originCartVer = matchPart ? (matchPart.cartVersion || '') : '';
+    var mappedCartVersion = mapping[originCartVer] || originCartVer;
+    var newPrice = matchPart ? (matchPart.newPrice || 0) : 0;
+    
+    var record = [
+      year,                   // A열
+      month,                  // B열
+      mappedCartVersion,      // C열
+      String(p.name || ''),   // D열
+      qty,                    // E열
+      newPrice                // F열
+    ];
+    
+    sheet.getRange(rowNum, 1, 1, 6).setValues([record]);
+    var formula = '=E' + rowNum + '*F' + rowNum;
+    sheet.getRange(rowNum, 7).setFormula(formula);
+
+    rowsAdded++;
+  }
+
+  return {
+    success: true,
+    message: '새로운 내용으로 ' + rowsAdded + '건이 수정(재등록)되었습니다.'
   };
 }
 

@@ -832,11 +832,17 @@
             <button class="goal-dashboard-btn" onclick="goToGoalRegister()">
                 <span class="icon">📝</span> 1. 목표 등록
             </button>
-            <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
-                <span class="icon">✍️</span> 2. 결과 작성
+            <button class="goal-dashboard-btn" onclick="goToGoalEditSelect()">
+                <span class="icon">✏️</span> 2. 목표 수정
             </button>
             <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
-                <span class="icon">📊</span> 3. 목표달성 현황
+                <span class="icon">✍️</span> 3. 결과 작성
+            </button>
+            <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
+                <span class="icon">🔄</span> 4. 결과 수정
+            </button>
+            <button class="goal-dashboard-btn" onclick="alert('준비 중입니다.')">
+                <span class="icon">📊</span> 5. 목표달성 현황
             </button>
         </div>
     </div>
@@ -1072,6 +1078,81 @@
     </div>
 
     <!-- ============================================================
+       화면: 월 목표 - 2. 목표 수정 (진입)
+       ============================================================ -->
+    <div id="screen-goal-edit-select" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-vin'); switchMainTab('goal')">←</button>
+            <h1>✏️ 목표 수정</h1>
+            <div></div>
+        </div>
+        <div style="margin-top:16px;">
+            <div class="card">
+                <div class="card-title">불러올 목표 년/월 선택</div>
+                <div class="form-group" style="display:flex; gap:12px;">
+                    <div style="flex:1;">
+                        <span class="form-label">해당 년도</span>
+                        <select class="form-select" id="goalEditYear"></select>
+                    </div>
+                    <div style="flex:1;">
+                        <span class="form-label">해당 월</span>
+                        <select class="form-select" id="goalEditMonth"></select>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="padding:12px 0 40px;">
+                <button class="btn btn-primary" onclick="handleLoadGoalData()" style="max-width:100%" id="goalEditLoadBtn">
+                    📥 불러오기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면: 월 목표 - 목표 수정 (상세 화면)
+       ============================================================ -->
+    <div id="screen-goal-edit" class="screen">
+        <div class="header">
+            <button class="back-btn" onclick="goToScreen('screen-goal-edit-select')">←</button>
+            <h1>✏️ 목표 수정 내용</h1>
+            <div></div>
+        </div>
+        <div style="margin-top:16px;">
+            <div class="card" style="margin-bottom:16px;">
+                <div style="font-size:16px; font-weight:bold; color:#1976D2;" id="goalEditTitle"></div>
+            </div>
+
+            <!-- 목표 수정 시에도 카트버전 버튼 유지 -->
+            <div class="cart-version-row">
+                <button class="cart-btn active" id="goalEditCartBtn1" onclick="selectGoalEditCartVersion('HY2.0/2.5')">HY2.0/2.5</button>
+                <button class="cart-btn" id="goalEditCartBtn2" onclick="selectGoalEditCartVersion('HY3.0/3.5')">HY3.0/3.5</button>
+            </div>
+
+            <div id="goalEditPartsListContainer"></div>
+            
+            <div style="padding:12px 0 40px;">
+                <button class="btn btn-success" onclick="handleGoalUpdate()" style="max-width:100%" id="goalUpdateBtn">
+                    📤 수정 반영
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+       화면: 목표 수정 - 성공
+       ============================================================ -->
+    <div id="screen-goal-edit-success" class="screen">
+        <div class="success-container">
+            <div class="success-icon">✅</div>
+            <div class="success-title" id="goalEditSuccessTitle">수정 완료!</div>
+            <button class="btn btn-primary" onclick="goToScreen('screen-vin'); switchMainTab('goal')">
+                🏠 월 목표 홈으로
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
        JavaScript
        ============================================================ -->
     <script>
@@ -1083,9 +1164,14 @@
         var isEditMode = false;   // 수정 모드 여부
         var editRow = null;       // 수정할 행 번호
         var regCartVersion = 'HY2.0/2.5';       // 등록 탭 카트버전
-        var transferCartVersion = 'HY2.0/2.5';   // 이관 탭 카트버전
-        var goalCartVersion = 'HY2.0/2.5';       // 월 목표 탭 카트버전
+        var transferCartVersion = 'HY2.0/2.5';  // 이관 탭 카트버전
+        var goalCartVersion = 'HY2.0/2.5';      // 월 목표 탭 카트버전
         var goalPartsQty = {};    // { index: qty } 월 목표 부품 수량
+        // 수정용 상태 변수
+        var goalEditCartVersion = 'HY2.0/2.5';
+        var goalEditPartsQty = {}; // 불러온 기존 수량 (및 수정 중 수량) { partName: qty } 형태 유지 또는 index 유지
+        var targetEditYear = null;
+        var targetEditMonth = null;
 
         // ── 화면 전환 ──
         function goToScreen(screenId) {
@@ -1720,6 +1806,7 @@
 
             // 목표 년도 세팅 (2026 ~ 2050)
             var yearSelect = document.getElementById('goalYear');
+            var editYearSelect = document.getElementById('goalEditYear');
             var currentYear = new Date().getFullYear();
             for (var y = 2026; y <= 2050; y++) {
                 var option = document.createElement('option');
@@ -1727,10 +1814,14 @@
                 option.text = y + '년';
                 if (y === currentYear) option.selected = true;
                 yearSelect.appendChild(option);
+                
+                var option2 = option.cloneNode(true);
+                editYearSelect.appendChild(option2);
             }
 
             // 목표 월 세팅 (1 ~ 12)
             var monthSelect = document.getElementById('goalMonth');
+            var editMonthSelect = document.getElementById('goalEditMonth');
             var currentMonth = new Date().getMonth() + 1;
             for (var m = 1; m <= 12; m++) {
                 var option = document.createElement('option');
@@ -1738,6 +1829,9 @@
                 option.text = m + '월';
                 if (m === currentMonth) option.selected = true;
                 monthSelect.appendChild(option);
+                
+                var option2 = option.cloneNode(true);
+                editMonthSelect.appendChild(option2);
             }
         })();
 
@@ -1886,6 +1980,169 @@
             // 년/월은 현재 선택된 상태 유지
             renderGoalPartsList();
             goToScreen('screen-goal-register');
+        }
+
+        // ============================================================
+        // 월 목표 탭: 목표 수정 로직
+        // ============================================================
+        function goToGoalEditSelect() {
+            goToScreen('screen-goal-edit-select');
+        }
+
+        function handleLoadGoalData() {
+            var year = document.getElementById('goalEditYear').value;
+            var month = document.getElementById('goalEditMonth').value;
+
+            if (!year || !month) {
+                showToast('년/월을 선택해주세요.', true);
+                return;
+            }
+
+            showLoading('목표 데이터를 불러오는 중...');
+            document.getElementById('goalEditLoadBtn').disabled = true;
+
+            google.script.run
+                .withSuccessHandler(function(data) {
+                    hideLoading();
+                    document.getElementById('goalEditLoadBtn').disabled = false;
+                    
+                    targetEditYear = year;
+                    targetEditMonth = month;
+                    
+                    // data는 [{name, qty}, ...] 형태. 이를 goalEditPartsQty에 매핑
+                    goalEditPartsQty = {};
+                    if (data && data.length > 0) {
+                        data.forEach(function(d) {
+                            // 이름으로 part.index 찾기
+                            var pItem = partsList.find(function(p) { return p.name === d.name; });
+                            if (pItem) {
+                                goalEditPartsQty[pItem.index] = d.qty;
+                            }
+                        });
+                    }
+                    
+                    document.getElementById('goalEditTitle').textContent = year + '년 ' + month + '월 목표 수정';
+                    renderGoalEditPartsList();
+                    goToScreen('screen-goal-edit');
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    document.getElementById('goalEditLoadBtn').disabled = false;
+                    showToast('데이터 로드 실패: ' + err.message, true);
+                })
+                .getGoalData(year, month);
+        }
+
+        function renderGoalEditPartsList() {
+            var container = document.getElementById('goalEditPartsListContainer');
+            if (!partsList || partsList.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align:center;color:#999;">부품 목록을 불러오는 중...</div>';
+                return;
+            }
+
+            var filtered = partsList.filter(function(p) { return p.cartVersion === goalEditCartVersion; });
+            var categoryIcons = {
+                '배터리': '🔋', '냉장고': '🧊', '섀시': '⚙️',
+                '전장': '🔌', '기타': '📦'
+            };
+
+            var html = '';
+            var currentCategory = '';
+
+            filtered.forEach(function(part) {
+                if (part.category !== currentCategory) {
+                    currentCategory = part.category;
+                    var icon = categoryIcons[currentCategory] || '📦';
+                    var catCount = filtered.filter(function(p) { return p.category === currentCategory; }).length;
+                    html += '<div class="category-header">' + icon + ' ' + currentCategory;
+                    html += ' <span class="category-badge">' + catCount + '개</span>';
+                    html += '</div>';
+                }
+
+                var qty = goalEditPartsQty[part.index] || 0;
+                var isSelected = qty > 0;
+
+                html += '<div class="part-card' + (isSelected ? ' selected' : '') + '">';
+                html += '  <div class="part-name">' + part.name + '</div>';
+                html += '  <div class="stepper">';
+                html += '    <button onclick="changeGoalEditQty(' + part.index + ',-1)"' + (qty <= 0 ? ' disabled' : '') + '>−</button>';
+                html += '    <input type="number" class="qty" value="' + qty + '" min="0" style="width:50px;border:none;font-size:16px;font-weight:700;color:#1565C0;text-align:center;background:transparent;-moz-appearance:textfield;" onchange="setGoalEditQty(' + part.index + ', this.value)" onclick="this.select()">';
+                html += '    <button onclick="changeGoalEditQty(' + part.index + ',1)">+</button>';
+                html += '  </div>';
+                html += '</div>';
+            });
+
+            container.innerHTML = html;
+        }
+
+        function selectGoalEditCartVersion(version) {
+            goalEditCartVersion = version;
+            document.getElementById('goalEditCartBtn1').classList.toggle('active', version === 'HY2.0/2.5');
+            document.getElementById('goalEditCartBtn2').classList.toggle('active', version === 'HY3.0/3.5');
+            renderGoalEditPartsList();
+        }
+
+        function changeGoalEditQty(partIndex, delta) {
+            var current = goalEditPartsQty[partIndex] || 0;
+            var newQty = Math.max(0, current + delta);
+            if (newQty === 0) delete goalEditPartsQty[partIndex];
+            else goalEditPartsQty[partIndex] = newQty;
+            renderGoalEditPartsList();
+        }
+
+        function setGoalEditQty(partIndex, value) {
+            var qty = Math.max(0, parseInt(value) || 0);
+            if (qty === 0) delete goalEditPartsQty[partIndex];
+            else goalEditPartsQty[partIndex] = qty;
+            renderGoalEditPartsList();
+        }
+
+        function getGoalEditSelectedParts() {
+            var selected = [];
+            for (var idx in goalEditPartsQty) {
+                if (goalEditPartsQty[idx] > 0) {
+                    var part = partsList.find(function(p) { return p.index === parseInt(idx); });
+                    if (part) {
+                        selected.push({
+                            name: part.name,
+                            qty: goalEditPartsQty[idx]
+                        });
+                    }
+                }
+            }
+            return selected;
+        }
+
+        function handleGoalUpdate() {
+            var selectedParts = getGoalEditSelectedParts();
+            if (!targetEditYear || !targetEditMonth) return;
+            
+            if (selectedParts.length === 0) {
+                if (!confirm("모든 부품 수량이 0입니다. 이 달의 목표 데이터를 모두 삭제하시겠습니까?")) {
+                    return;
+                }
+            }
+
+            showLoading('월 목표 수정 반영 중...');
+            document.getElementById('goalUpdateBtn').disabled = true;
+
+            google.script.run
+                .withSuccessHandler(function(result) {
+                    hideLoading();
+                    document.getElementById('goalUpdateBtn').disabled = false;
+                    if (result.success) {
+                        document.getElementById('goalEditSuccessTitle').textContent = result.message;
+                        goToScreen('screen-goal-edit-success');
+                    } else {
+                        showToast(result.error, true);
+                    }
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    document.getElementById('goalUpdateBtn').disabled = false;
+                    showToast('수정 실패: ' + err.message, true);
+                })
+                .updateGoalData(targetEditYear, targetEditMonth, selectedParts);
         }
     </script>
 

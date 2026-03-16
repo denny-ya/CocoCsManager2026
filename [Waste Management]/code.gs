@@ -668,24 +668,15 @@ function getGoalStatusData(year, month) {
     if (rYear === targetYear && rMonth === targetMonth) {
       var name = String(data[i][3]).trim();   // D열: 부품명
       var gQty = Number(data[i][4]) || 0;     // E열: 목표수량
-      var newPriceSum = Number(data[i][6]) || 0; // G열: 신품 A/S 부품금액 합계
       var rQty = Number(data[i][7]) || 0;     // H열: 탈거수량(결과수량)
-      var reusedUnitPrice = Number(data[i][8]) || 0; // I열: 재사용품 AS단가
-      var reusedPriceSum = Number(data[i][9]) || 0; // J열: 재사용품 A/S 부품금액 합계
-      
-      // 탈거수량(H열)이 0이면 절감액을 합산에 반영하지 않도록 0으로 처리
-      if (rQty === 0) {
-        newPriceSum = 0;
-        reusedPriceSum = 0;
-      }
+      var savingAmt = Number(data[i][11]) || 0; // L열: 절감금액 예상 (시트 수식 값 직접 읽기)
       
       if (gQty > 0 || rQty > 0) {
         result.push({
           partName: name, 
           goalQty: gQty, 
           resultQty: rQty,
-          newPriceSum: newPriceSum,
-          reusedPriceSum: reusedPriceSum
+          savingAmount: savingAmt  // L열 값을 그대로 전달
         });
       }
     }

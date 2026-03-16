@@ -2530,7 +2530,7 @@
                     
                     targetStatusYear = year;
                     targetStatusMonth = month;
-                    statusDataList = data || []; // 배열 형태로 수신 [{partName, goalQty, resultQty, newPriceSum, reusedPriceSum}, ...]
+                    statusDataList = data || []; // 배열 형태로 수신 [{partName, goalQty, resultQty, savingAmount}, ...]
                     
                     renderStatusDetail();
                     goToScreen('screen-status-detail');
@@ -2555,22 +2555,20 @@
             var totalKinds = 0;   // D열 (부품 수)
             var totalResult = 0;  // H열 
             var totalGoal = 0;    // E열 
-            var sumG = 0;         // G열 합계
-            var sumJ = 0;         // J열 합계
+            var totalSaving = 0;  // L열 합계
             
             statusDataList.forEach(function(d) {
                 if (d.goalQty > 0 || d.resultQty > 0) totalKinds++;
                 totalResult += (d.resultQty || 0);
                 totalGoal += (d.goalQty || 0);
-                sumG += (d.newPriceSum || 0);
-                sumJ += (d.reusedPriceSum || 0);
+                totalSaving += (d.savingAmount || 0);
             });
             
             var pctText = "0%";
             if (totalGoal > 0) {
                 pctText = ((totalResult / totalGoal) * 100).toFixed(1) + "%";
             }
-            var savingAmt = sumG - sumJ;
+            var savingAmt = totalSaving;
             
             var html = '';
             

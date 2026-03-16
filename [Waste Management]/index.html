@@ -1425,60 +1425,75 @@
                 return;
             }
 
-            // 중복 차대번호 체크
+            // 1단계: 차대번호 유효성 검증 (4. 차대정보 시트 B열)
             showLoading('차대번호 확인 중...');
             google.script.run
-                .withSuccessHandler(function (result) {
-                    hideLoading();
-                    if (result.exists) {
-                        // 중복 발견 → 수정 여부 확인
-                        var msg = '이미 폐기등록한 차대번호입니다.\n\n'
-                            + '등록자: ' + result.employee + '\n'
-                            + '등록일자: ' + result.date + '\n\n'
-                            + '수정하시겠습니까?';
-                        if (confirm(msg)) {
-                            // 수정 모드 활성화
-                            isEditMode = true;
-                            editRow = result.row;
-                            currentVin = vin;
-                            document.getElementById('headerVin').textContent = vin + ' (수정)';
-
-                            // 기존 수량 로드
-                            partsQty = {};
-                            partsList.forEach(function (p) {
-                                var existQty = result.existingParts[p.name];
-                                if (existQty && existQty > 0) {
-                                    partsQty[p.index] = existQty;
-                                }
-                            });
-
-                            renderPartsList();
-                            updateSelectedCount();
-                            goToScreen('screen-parts');
-                        }
-                    } else {
-                        // 신규 등록
-                        isEditMode = false;
-                        editRow = null;
-                        currentVin = vin;
-                        document.getElementById('headerVin').textContent = vin;
-
-                        partsQty = {};
-                        partsList.forEach(function (p) {
-                            if (p.defaultQty > 0) {
-                                partsQty[p.index] = p.defaultQty;
-                            }
-                        });
-                        renderPartsList();
-                        updateSelectedCount();
-                        goToScreen('screen-parts');
+                .withSuccessHandler(function (vinResult) {
+                    if (!vinResult.valid) {
+                        hideLoading();
+                        showToast(vinResult.error, true);
+                        return;
                     }
+                    
+                    // 2단계: 중복 차대번호 체크
+                    google.script.run
+                        .withSuccessHandler(function (result) {
+                            hideLoading();
+                            if (result.exists) {
+                                // 중복 발견 → 수정 여부 확인
+                                var msg = '이미 폐기등록한 차대번호입니다.\n\n'
+                                    + '등록자: ' + result.employee + '\n'
+                                    + '등록일자: ' + result.date + '\n\n'
+                                    + '수정하시겠습니까?';
+                                if (confirm(msg)) {
+                                    // 수정 모드 활성화
+                                    isEditMode = true;
+                                    editRow = result.row;
+                                    currentVin = vin;
+                                    document.getElementById('headerVin').textContent = vin + ' (수정)';
+
+                                    // 기존 수량 로드
+                                    partsQty = {};
+                                    partsList.forEach(function (p) {
+                                        var existQty = result.existingParts[p.name];
+                                        if (existQty && existQty > 0) {
+                                            partsQty[p.index] = existQty;
+                                        }
+                                    });
+
+                                    renderPartsList();
+                                    updateSelectedCount();
+                                    goToScreen('screen-parts');
+                                }
+                            } else {
+                                // 신규 등록
+                                isEditMode = false;
+                                editRow = null;
+                                currentVin = vin;
+                                document.getElementById('headerVin').textContent = vin;
+
+                                partsQty = {};
+                                partsList.forEach(function (p) {
+                                    if (p.defaultQty > 0) {
+                                        partsQty[p.index] = p.defaultQty;
+                                    }
+                                });
+                                renderPartsList();
+                                updateSelectedCount();
+                                goToScreen('screen-parts');
+                            }
+                        })
+                        .withFailureHandler(function (err) {
+                            hideLoading();
+                            showToast('확인 실패: ' + err.message, true);
+                        })
+                        .checkDuplicateVin(vin);
                 })
                 .withFailureHandler(function (err) {
                     hideLoading();
-                    showToast('확인 실패: ' + err.message, true);
+                    showToast('오류: ' + err.message, true);
                 })
-                .checkDuplicateVin(vin);
+                .validateVin(vin);
         }
 
         document.getElementById('vinInput').addEventListener('keydown', function (e) {
@@ -2018,6 +2033,7 @@
         // 월 목표 탭: 목표 등록 로직
         // ============================================================
         function goToGoalRegister() {
+            goalPartsQty = {}; // 수량 초기화
             renderGoalPartsList();
             goToScreen('screen-goal-register');
         }
@@ -2140,6 +2156,7 @@
                     hideLoading();
                     document.getElementById('goalSubmitBtn').disabled = false;
                     if (result.success) {
+                        goalPartsQty = {}; // 등록 완료 후 수량 초기화
                         document.getElementById('goalSuccessMsg').textContent = result.message;
                         goToScreen('screen-goal-success');
                     } else {

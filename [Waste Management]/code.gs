@@ -143,6 +143,26 @@ function lookupBarcode(barcode) {
 }
 
 // ============================================================
+// 차대번호 유효성 검증 (4. 차대정보 시트 B열 기준)
+// ============================================================
+
+function validateVin(vin) {
+  if (!vin) return { valid: false, error: '차대번호를 입력해주세요.' };
+  
+  var sheet = getSheet('4. 차대정보');
+  var data = sheet.getDataRange().getValues();
+  var searchVin = String(vin).trim();
+  
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][1]).trim() === searchVin) {
+      return { valid: true };
+    }
+  }
+  
+  return { valid: false, error: '등록되지 않은 차대입니다.' };
+}
+
+// ============================================================
 // 중복 차대번호 검사
 // ============================================================
 
@@ -650,7 +670,14 @@ function getGoalStatusData(year, month) {
       var gQty = Number(data[i][4]) || 0;     // E열: 목표수량
       var newPriceSum = Number(data[i][6]) || 0; // G열: 신품 A/S 부품금액 합계
       var rQty = Number(data[i][7]) || 0;     // H열: 탈거수량(결과수량)
+      var reusedUnitPrice = Number(data[i][8]) || 0; // I열: 재사용품 AS단가
       var reusedPriceSum = Number(data[i][9]) || 0; // J열: 재사용품 A/S 부품금액 합계
+      
+      // 탈거수량(H열)이 0이고, 재사용품 AS단가(I열)이 0이면 절감액을 0으로 처리
+      if (rQty === 0 && reusedUnitPrice === 0) {
+        newPriceSum = 0;
+        reusedPriceSum = 0;
+      }
       
       if (gQty > 0 || rQty > 0) {
         result.push({

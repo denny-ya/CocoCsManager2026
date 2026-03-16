@@ -612,7 +612,7 @@ function saveResultData(year, month, parts) {
       sheet.getRange(rIndex, 9).setValue(reusedPrice);     // I열: 재사용품 단가
       sheet.getRange(rIndex, 10).setFormula('=H' + rIndex + '*I' + rIndex); // J열
       sheet.getRange(rIndex, 11).setFormula('=IF(E' + rIndex + '>0, H' + rIndex + '/E' + rIndex + ', "")'); // K열
-      sheet.getRange(rIndex, 12).setFormula('=G' + rIndex + '-J' + rIndex); // L열
+      sheet.getRange(rIndex, 12).setFormula('=(F' + rIndex + '*H' + rIndex + ')-(I' + rIndex + '*H' + rIndex + ')'); // L열
       rowsUpdated++;
     } else {
       // (2) 기존 부품이 없음 (목표 등록시 누락된 부품) -> 하단에 새로 추가
@@ -633,7 +633,7 @@ function saveResultData(year, month, parts) {
         sheet.getRange(newRow, 7).setFormula('=E' + newRow + '*F' + newRow);
         sheet.getRange(newRow, 10).setFormula('=H' + newRow + '*I' + newRow);
         sheet.getRange(newRow, 11).setFormula('=IF(E' + newRow + '>0, H' + newRow + '/E' + newRow + ', "")');
-        sheet.getRange(newRow, 12).setFormula('=G' + newRow + '-J' + newRow);
+        sheet.getRange(newRow, 12).setFormula('=(F' + newRow + '*H' + newRow + ')-(I' + newRow + '*H' + newRow + ')');
         rowsAdded++;
       }
     }
@@ -673,8 +673,8 @@ function getGoalStatusData(year, month) {
       var reusedUnitPrice = Number(data[i][8]) || 0; // I열: 재사용품 AS단가
       var reusedPriceSum = Number(data[i][9]) || 0; // J열: 재사용품 A/S 부품금액 합계
       
-      // 탈거수량(H열)이 0이고, 재사용품 AS단가(I열)이 0이면 절감액을 0으로 처리
-      if (rQty === 0 && reusedUnitPrice === 0) {
+      // 탈거수량(H열)이 0이면 절감액을 합산에 반영하지 않도록 0으로 처리
+      if (rQty === 0) {
         newPriceSum = 0;
         reusedPriceSum = 0;
       }

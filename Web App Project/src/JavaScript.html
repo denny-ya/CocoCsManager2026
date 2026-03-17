@@ -1,0 +1,972 @@
+<script>
+  function showLoading() {
+    document.getElementById('loading').style.display = 'flex';
+  }
+
+  function hideLoading() {
+    document.getElementById('loading').style.display = 'none';
+  }
+
+  function showLogin() {
+    document.getElementById('authWrapper').style.display = 'flex';
+    document.getElementById('loginView').style.display = 'block';
+    document.getElementById('changePwView').style.display = 'none';
+    document.getElementById('mainView').style.display = 'none';
+  }
+
+  function showChangePassword() {
+    document.getElementById('authWrapper').style.display = 'flex';
+    document.getElementById('loginView').style.display = 'none';
+    document.getElementById('changePwView').style.display = 'block';
+    document.getElementById('mainView').style.display = 'none';
+  }
+
+  function showMain(userName) {
+    document.getElementById('authWrapper').style.display = 'none';
+    document.getElementById('mainView').style.display = 'block';
+    if (userName) {
+      document.getElementById('userNameDisplay').innerText = userName;
+    }
+    document.getElementById('bsSearchView').style.display = 'none';
+    document.getElementById('branchAddressView').style.display = 'none';
+    renderMenu();
+
+    // 뒤로가기용 히스토리 추가
+    if (history.state?.view !== 'main') {
+      history.pushState({ view: 'main' }, 'Main');
+    }
+  }
+
+  const MENU_ITEMS = [
+    { id: 'bs', title: 'BS 및 리워크', desc: '검색을 통한 업무 조회', icon: 'search', color: '#0051A2', action: () => showBsSearchView() },
+    { id: 'address', title: '영업점 주소록', desc: '전국 영업점 및 지사 연락처', icon: 'location_on', color: '#E65100', action: () => showBranchAddressView() },
+    { id: 'parts', title: '부품 탈거 관리', desc: '회수 부품 및 탈거 정보 관리', icon: 'handyman', color: '#2E7D32' },
+    { id: 'delivery', title: '배차 관리', desc: '실시간 배차 및 이동 현황', icon: 'local_shipping', color: '#6A1B9A' },
+    { id: 'stats', title: '실적 및 통계', desc: '일일/월간 실적 대시보드', icon: 'bar_chart', color: '#1565C0' },
+    { id: 'guide', title: '업무 가이드', desc: '표준 업무 절차 및 매뉴얼', icon: 'menu_book', color: '#00838F' }
+  ];
+
+  function renderMenu() {
+    console.log('Rendering menu based on permissions');
+    const listBody = document.getElementById('menuList');
+    listBody.innerHTML = '';
+
+    MENU_ITEMS.forEach((item) => {
+      // 권한 체크
+      let hasAccess = false;
+      if (userPermissions) {
+        if (item.id === 'bs') {
+          hasAccess = userPermissions.bs && userPermissions.bs.some(p => p === 'O' || p === 'o');
+        } else if (item.id === 'delivery') {
+          hasAccess = userPermissions.delivery && userPermissions.delivery.some(p => p === 'O' || p === 'o');
+        } else {
+          hasAccess = userPermissions[item.id] === 'O' || userPermissions[item.id] === 'o';
+        }
+      }
+
+      if (!hasAccess) return;
+
+      const card = document.createElement('div');
+      card.className = 'menu-card';
+
+      if (item.action) {
+        card.onclick = item.action;
+      } else {
+        card.onclick = () => alert(item.title + ' 기능을 준비 중입니다.');
+      }
+
+      card.innerHTML = `
+        <div class="menu-card-left-bar" style="background-color: ${item.color}"></div>
+        <div class="menu-card-content">
+          <div class="menu-icon-container">
+            <span class="material-icons" style="color: ${item.color}">${item.icon}</span>
+          </div>
+          <div class="menu-text-container">
+            <h3 class="menu-title">${item.title}</h3>
+            <p class="menu-desc">${item.desc}</p>
+          </div>
+          <span class="material-icons menu-arrow">chevron_right</span>
+        </div>
+      `;
+      listBody.appendChild(card);
+    });
+  }
+
+  // ── BS 검색 관련 로직 ──
+  let userPermissions = null; // 모든 메뉴 권한 객체
+  let currentBsPart = '';
+  let currentBsMasterPart = '';
+  let currentVinForComplete = '';
+
+  function showBsSearchView() {
+    // 진입 시 초기화
+    document.getElementById('bsVinInput').value = '';
+    document.getElementById('bsMasterInput').value = '';
+    document.getElementById('bsVinResults').innerHTML = `
+      <div class="empty-state">
+        <span class="material-icons">manage_search</span>
+        <p>차대번호를 입력하고 검색해주세요</p>
+      </div>`;
+    document.getElementById('bsMasterResults').innerHTML = `
+      <div class="empty-state">
+        <span class="material-icons">analytics</span>
+        <p>마스터 이름을 입력하고 통계를 조회하세요</p>
+      </div>`;
+
+    // 탭 초기화
+    switchBsTab('vin');
+
+    // 권한별 필터 칩 렌더링
+    if (userPermissions && userPermissions.bs) {
+      renderServiceChips(userPermissions.bs);
+    }
+
+    document.getElementById('mainView').style.display = 'none';
+    document.getElementById('bsSearchView').style.display = 'block';
+    document.getElementById('branchAddressView').style.display = 'none';
+
+    // 뒤로가기용 히스토리 추가
+    if (history.state?.view !== 'bsSearch') {
+      history.pushState({ view: 'bsSearch' }, 'BS Search');
+    }
+  }
+
+  // ── 영업점 주소록 관련 로직 ──
+  function showBranchAddressView() {
+    // 초기화
+    document.getElementById('branchSearchInput').value = '';
+    document.getElementById('branchResultContent').innerHTML = `
+      <div class="empty-state" style="padding: 60px 20px; text-align: center; color: #bbb;">
+        <span class="material-icons" style="font-size: 64px; margin-bottom: 16px; color: #f0f0f0;">storefront</span>
+        <p>찾으시는 영업점 이름을 입력해주세요</p>
+      </div>`;
+
+    document.getElementById('mainView').style.display = 'none';
+    document.getElementById('bsSearchView').style.display = 'none';
+    document.getElementById('branchAddressView').style.display = 'block';
+
+    if (history.state?.view !== 'branchAddress') {
+      history.pushState({ view: 'branchAddress' }, 'Branch Address');
+    }
+
+    // 서비스 칩 렌더링 추가
+    renderBranchServiceChips();
+  }
+
+  /**
+   * 영업점 주소록용 서비스 칩 렌더링 (권한 기반)
+   */
+  function renderBranchServiceChips() {
+    const container = document.getElementById('branchPartChips');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!userPermissions || !userPermissions.bs) return;
+
+    const bsPerms = userPermissions.bs;
+    const activeServices = [];
+    bsPerms.forEach((p, i) => {
+      if (p === 'O' || p === 'o') {
+        activeServices.push({ name: `서비스${i + 1}` });
+      }
+    });
+
+    // 모든 서비스 권한이 있는 경우 '전체' 추가
+    if (activeServices.length === 4) {
+      const isAllActive = !currentBsPart || currentBsPart === '';
+      const allChip = createFilterChip('전체', isAllActive);
+      container.appendChild(allChip);
+      if (isAllActive) currentBsPart = '';
+    }
+
+    activeServices.forEach(s => {
+      const chip = createFilterChip(s.name, currentBsPart === s.name);
+      container.appendChild(chip);
+    });
+  }
+
+  function createFilterChip(label, isActive) {
+    const chip = document.createElement('div');
+    chip.className = 'filter-chip' + (isActive ? ' active' : '');
+    chip.innerText = label;
+    chip.onclick = function () {
+      const siblings = this.parentElement.querySelectorAll('.filter-chip');
+      siblings.forEach(s => s.classList.remove('active'));
+      this.classList.add('active');
+
+      const partName = label === '전체' ? '' : label;
+      currentBsPart = partName;
+
+      // 이미 키워드가 있는 경우 즉시 재검색
+      const keyword = document.getElementById('branchSearchInput').value.trim();
+      if (keyword) {
+        handleBranchSearch();
+      }
+    };
+    return chip;
+  }
+
+  /**
+   * 영업점 검색 실행
+   */
+  function handleBranchSearch() {
+    const keyword = document.getElementById('branchSearchInput').value.trim();
+    if (!keyword) { alert('영업점 이름을 입력해주세요.'); return; }
+
+    document.getElementById('branchResultContent').innerHTML = '';
+    document.getElementById('branchResultLoading').style.display = 'block';
+
+    // 1. 영업점 기본 정보 조회
+    google.script.run
+      .withSuccessHandler(function (info) {
+        if (!info || info.error) {
+          document.getElementById('branchResultLoading').style.display = 'none';
+          document.getElementById('branchResultContent').innerHTML = `
+            <div class="empty-state" style="padding: 60px 20px; text-align: center; color: #bbb;">
+              <span class="material-icons" style="font-size: 48px; margin-bottom: 12px; color: #ffcdd2;">error_outline</span>
+              <p>${info ? info.error : '영업점 정보를 찾을 수 없습니다.'}</p>
+            </div>`;
+          return;
+        }
+
+        // 2. 영업점 작업 현황(통계) 조회
+        google.script.run
+          .withSuccessHandler(function (stats) {
+            document.getElementById('branchResultLoading').style.display = 'none';
+            renderBranchResult(info, stats);
+          })
+          .withFailureHandler(function (err) {
+            document.getElementById('branchResultLoading').style.display = 'none';
+            alert('통계 조회 중 오류: ' + err);
+          })
+          .getBranchWorkCount(info.name, currentBsPart); // 현재 선택된 파트 권한 반영
+      })
+      .withFailureHandler(function (err) {
+        document.getElementById('branchResultLoading').style.display = 'none';
+        alert('영업점 조회 중 오류: ' + err);
+      })
+      .getSalesPointInfo(keyword);
+  }
+
+  /**
+   * 영업점 검색 결과 렌더링
+   */
+  function renderBranchResult(info, stats) {
+    const container = document.getElementById('branchResultContent');
+    const template = document.getElementById('branchCardTemplate').innerHTML;
+
+    let vehicleListHtml = '';
+
+    // 미완료 차량 우선 정렬하여 리스트 생성
+    const allVehicles = [...(stats.reworkVehicles || []), ...(stats.regularVehicles || [])];
+
+    if (allVehicles.length === 0) {
+      vehicleListHtml = '<p style="text-align:center; color:#999; font-size:13px; padding:20px;">대상 차량이 없습니다.</p>';
+    } else {
+      allVehicles.forEach(v => {
+        const isDone = v.status === '완료';
+        vehicleListHtml += `
+          <div class="vehicle-mini-item" onclick="jumpToBsSearch('${v.vin}')">
+            <div>
+              <span class="vin">${v.vin}</span>
+              <span style="font-size:11px; color:#999; margin-left:6px;">(${v.cartVersion})</span>
+            </div>
+            <span class="status-tag ${isDone ? 'done' : 'todo'}">${v.status}</span>
+          </div>
+        `;
+      });
+    }
+
+    const html = template
+      .replace('{{name}}', info.name)
+      .replace('{{address}}', info.address || '-')
+      .replace('{{phone}}', info.phone || '-')
+      .replace('{{phone}}', info.phone || '-') // tel 링크용 재사용
+      .replace('{{managerPhone}}', info.managerPhone || '-')
+      .replace('{{managerPhone}}', info.managerPhone || '-') // tel 링크용 재사용
+      .replace('{{encodedAddress}}', encodeURIComponent(info.address || info.name))
+      .replace('{{partName}}', currentBsPart || '전체')
+      .replace('{{total}}', stats.total)
+      .replace('{{completed}}', stats.completed)
+      .replace('{{remaining}}', stats.remaining)
+      .replace('{{completionRate}}', stats.completionRate)
+      .replace('{{vehicleListHtml}}', vehicleListHtml);
+
+    container.innerHTML = html;
+  }
+
+  /**
+   * 영업점 리스트에서 BS 검색으로 바로가기
+   */
+  function jumpToBsSearch(vin) {
+    if (!vin) return;
+    showBsSearchView();
+    document.getElementById('bsVinInput').value = vin;
+    handleBsSearch();
+  }
+
+  /**
+   * 권한별 서비스 파트 칩 생성
+   */
+  function renderServiceChips(bsPerms) {
+    const vinContainer = document.getElementById('bsVinPartChips');
+    const masterContainer = document.getElementById('bsMasterPartChips');
+
+    vinContainer.innerHTML = '';
+    masterContainer.innerHTML = '';
+
+    // 'O' 표시된 서비스 파트 찾기
+    const activeServices = [];
+    bsPerms.forEach((p, i) => {
+      if (p === 'O' || p === 'o') {
+        activeServices.push({ id: `서비스${i + 1}`, label: `서비스${i + 1}` });
+      }
+    });
+
+    if (activeServices.length === 0) {
+      vinContainer.innerHTML = '<span style="font-size:12px; color:#999;">권한 없음</span>';
+      masterContainer.innerHTML = '<span style="font-size:12px; color:#999;">권한 없음</span>';
+      return;
+    }
+
+    // UI 생성 함수
+    const generateHtml = (isMaster) => {
+      let html = '';
+      // 4개 모두 권한이 있는 경우에만 '전체' 표시 (사용자 요구사항)
+      const showAll = activeServices.length === 4;
+
+      if (showAll) {
+        html += `<span class="chip active" onclick="${isMaster ? 'selectBsMasterPart' : 'selectBsPart'}(this, '')">전체</span>`;
+      }
+
+      activeServices.forEach((s, idx) => {
+        // 권한이 1개뿐이거나(showAll이 false이고 전용버튼만 있을 때) 첫번째 버튼을 활성화할지 결정
+        // 4개 다 있을 때 '전체'가 active이므로 버튼들은 비활성. 1~3개일 때는 첫번째 버튼을 active로.
+        const isActive = (!showAll && idx === 0) ? 'active' : '';
+        html += `<span class="chip ${isActive}" onclick="${isMaster ? 'selectBsMasterPart' : 'selectBsPart'}(this, '${s.id}')">${s.label}</span>`;
+      });
+      return html;
+    };
+
+    // 초기 상태값 설정
+    if (activeServices.length === 4) {
+      currentBsPart = '';
+      currentBsMasterPart = '';
+    } else {
+      currentBsPart = activeServices[0].id;
+      currentBsMasterPart = activeServices[0].id;
+    }
+
+    vinContainer.innerHTML = generateHtml(false);
+    masterContainer.innerHTML = generateHtml(true);
+  }
+
+  function showMainView() {
+    // 하드웨어/브라우저 뒤로가기 버튼과 동일하게 동작하도록 history.back() 호출
+    // onpopstate에서 이를 감지하여 showMain()을 실행하게 됨
+    history.back();
+  }
+
+  function switchBsTab(tab) {
+    const isVin = tab === 'vin';
+    document.getElementById('bsVinSection').style.display = isVin ? 'block' : 'none';
+    document.getElementById('bsMasterSection').style.display = isVin ? 'none' : 'block';
+    document.getElementById('tabVin').className = `tab-item ${isVin ? 'active' : ''}`;
+    document.getElementById('tabMaster').className = `tab-item ${!isVin ? 'active' : ''}`;
+  }
+
+  function selectBsPart(el, val) {
+    document.querySelectorAll('#bsVinPartChips .chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    currentBsPart = val;
+  }
+
+  function selectBsMasterPart(el, val) {
+    document.querySelectorAll('#bsMasterPartChips .chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    currentBsMasterPart = val;
+  }
+
+  // 차대번호 검색
+  function handleBsSearch() {
+    try {
+      const keyword = document.getElementById('bsVinInput').value.trim();
+      if (!keyword) { alert('차대번호를 입력해주세요.'); return; }
+
+      const container = document.getElementById('bsVinResults');
+      container.innerHTML = '<div class="empty-state"><p>조회 중...</p></div>';
+
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function (results) {
+          hideLoading();
+          renderBsResults(results);
+        })
+        .withFailureHandler(function (err) {
+          hideLoading();
+          alert('검색 중 오류 발생: ' + err);
+        })
+        .searchBS(keyword, currentBsPart);
+    } catch (e) {
+      hideLoading();
+      alert('검색 실행 중 오류: ' + e.message);
+    }
+  }
+
+  /**
+   * BS 검색 결과 렌더링
+   */
+  function renderBsResults(results) {
+    const container = document.getElementById('bsVinResults');
+    container.innerHTML = '';
+
+    // 서버에서 에러 객체가 반환된 경우 처리
+    if (results && results.error) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">warning</span>
+          <p>검색 오류: ${results.error}</p>
+        </div>
+      `;
+      return;
+    }
+
+    if (!results || !Array.isArray(results) || results.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">search_off</span>
+          <p>검색 결과가 없습니다.</p>
+        </div>
+      `;
+      return;
+    }
+
+    results.forEach(item => {
+      const isCompleted = item.completed && item.completed.includes('완료');
+      const isRework = item.bsTarget && item.bsTarget.includes('리워크');
+      const isTarget = item.bsTarget === 'O' || isRework;
+      const isNonTarget = item.bsTarget === 'X';
+
+      let badgesHtml = '<div class="status-badges-container">';
+
+      // 1. 점검 상태 배지 (완료 vs 미완료 대상 vs 비대상)
+      if (isCompleted) {
+        badgesHtml += `
+          <div class="status-badge badge-completed">
+            <span class="material-icons" style="font-size:18px; vertical-align:middle; margin-right:6px;">verified</span>점검 완료 (${item.completedDate || '날짜미상'})
+          </div>`;
+      } else if (isTarget) {
+        badgesHtml += `
+          <div class="status-badge badge-target">
+            <span class="material-icons" style="font-size:18px; vertical-align:middle; margin-right:6px;">error</span>BS 점검 대상
+          </div>`;
+      } else if (isNonTarget) {
+        badgesHtml += `
+          <div class="status-badge badge-non-target">
+            <span class="material-icons" style="font-size:18px; vertical-align:middle; margin-right:6px;">remove_circle</span>BS 점검 비대상
+          </div>`;
+      }
+
+      // 2. 리워크 배지 (완료 여부와 상관없이 타겟이면 노출)
+      if (isRework) {
+        badgesHtml += `
+          <div class="status-badge badge-rework">
+            <span class="material-icons" style="font-size:18px; vertical-align:middle; margin-right:6px;">build_circle</span>리워크(2026)
+          </div>`;
+      }
+
+      badgesHtml += '</div>';
+
+      // 제외사유Badge
+      let exclusionHtml = item.exclusionReason ? `
+        <div class="status-badge" style="background:#f5f5f5; color:#777; margin-bottom:12px; display:block; text-align:center;">
+          <span class="material-icons" style="font-size:16px; vertical-align:middle; margin-right:4px;">remove_circle</span>제외: ${item.exclusionReason}
+        </div>` : '';
+
+      // 영업점 작업 현황 요약 카드
+      let summaryHtml = '';
+      if (item.branchSummary) {
+        const s = item.branchSummary;
+        summaryHtml = `
+          <div class="summary-box">
+            <div class="summary-title">
+              <span class="material-icons" style="font-size:16px; margin-right:4px;">store</span> ${item.salesPoint} 작업 현황
+            </div>
+            <div class="summary-grid">
+              <div>
+                <div class="summary-item-label">전체 (${s.completed}/${s.total})</div>
+                <div class="summary-item-rate color-total">${s.rate}%</div>
+              </div>
+              <div>
+                <div class="summary-item-label">BS (${s.regularCompleted}/${s.regularTotal})</div>
+                <div class="summary-item-rate color-bs">${s.regularRate}%</div>
+              </div>
+              <div>
+                <div class="summary-item-label">리워크 (${s.reworkCompleted}/${s.reworkTotal})</div>
+                <div class="summary-item-rate color-rework">${s.reworkRate}%</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      const card = document.createElement('div');
+      card.className = 'vehicle-card';
+      card.innerHTML = `
+        ${badgesHtml}
+        ${exclusionHtml}
+        <div class="info-row"><span class="info-label">차대번호</span><span class="info-value bold">${item.vin}</span></div>
+        <div class="info-row"><span class="info-label">카트버전</span><span class="info-value">${item.cartVersion}</span></div>
+        <div class="info-row"><span class="info-label">지점/영업소</span><span class="info-value">${item.branch} / ${item.salesOffice}</span></div>
+        <div class="info-row"><span class="info-label">영업점</span><span class="info-value">${item.salesPoint}</span></div>
+        <div class="info-row"><span class="info-label">지구</span><span class="info-value">${item.district || '-'}</span></div>
+        <div class="info-row"><span class="info-label">마스터</span><span class="info-value">${item.master}</span></div>
+        <div class="info-row"><span class="info-label">제조일</span><span class="info-value">${item.manufactureDate}</span></div>
+        
+        ${summaryHtml}
+
+        <div class="memo-box">
+          <div class="memo-title"><span class="material-icons" style="font-size:14px; vertical-align:middle;">edit_note</span> 비고 / 메모</div>
+          <textarea id="memo_${item.vin}" class="memo-textarea" placeholder="메모를 입력하세요...">${item.memo || ''}</textarea>
+          <div style="text-align:right;">
+             <button class="save-memo-btn" onclick="saveMemoLocal('${item.vin}')">저장하기</button>
+          </div>
+        </div>
+        ${!isCompleted ? `<button class="complete-action-btn" onclick="openCompleteModal('${item.vin}')">점검 완료 처리</button>` : ''}
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  // 마스터 통계 검색
+  function handleMasterStatsSearch() {
+    const masterName = document.getElementById('bsMasterInput').value.trim();
+    if (!masterName) { alert('마스터 이름을 입력해주세요.'); return; }
+
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (stats) {
+        hideLoading();
+        renderMasterStats(stats);
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        alert('조회 중 오류 발생: ' + err);
+      })
+      .getMasterStats(masterName, currentBsMasterPart);
+  }
+
+  /**
+   * 마스터 통계 렌더링
+   */
+  function renderMasterStats(stats) {
+    const container = document.getElementById('bsMasterResults');
+    container.innerHTML = '';
+
+    if (!stats || stats.total === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">person_off</span>
+          <p>해당 마스터의 데이터가 없습니다.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const masterName = document.getElementById('bsMasterInput').value.trim();
+
+    let branchHtml = '';
+    if (stats.branchStats && stats.branchStats.length > 0) {
+      stats.branchStats.forEach(b => {
+        branchHtml += `
+          <div class="detailed-branch-card">
+            <div class="branch-card-header">
+              <span style="font-weight:700; color:#333;">${b.name}</span>
+              <span style="font-size:12px; color:#555; font-weight:600;">${b.completed}/${b.total} (${b.rate}%)</span>
+            </div>
+            <div class="mini-stats-row">
+              <div class="mini-stats-item">
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:#888; margin-bottom:2px;"><span>BS</span><span>${b.regularCompleted}/${b.regularTotal}</span></div>
+                <div class="mini-bar-group">
+                  <span style="font-size:11px; font-weight:700; color:#D32F2F;">${b.regularRate}%</span>
+                  <div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${b.regularRate}%; background:#D32F2F;"></div></div>
+                </div>
+              </div>
+              <div class="mini-stats-item">
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:#888; margin-bottom:2px;"><span>Rework</span><span>${b.reworkCompleted}/${b.reworkTotal}</span></div>
+                <div class="mini-bar-group">
+                  <span style="font-size:11px; font-weight:700; color:#1565C0;">${b.reworkRate}%</span>
+                  <div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${b.reworkRate}%; background:#1565C0;"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    container.innerHTML = `
+      <div class="stats-card-main">
+        <div style="font-size:16px; font-weight:700; color:#0051A2; margin-bottom:24px; display:flex; align-items:center;">
+          <span class="material-icons" style="margin-right:8px;">engineering</span> ${masterName} 마스터 작업 현황
+        </div>
+        
+        <div class="progress-section">
+          <div style="font-size:13px; color:#888; margin-bottom:6px;">전체 완료율</div>
+          <div class="progress-main-rate">${stats.completionRate}%</div>
+          <div class="progress-bar-bg" style="height:10px;"><div class="progress-bar-fill" style="width:${stats.completionRate}%"></div></div>
+          <div style="display:flex; justify-content:center; gap:20px; font-size:14px; margin-top:12px; color:#555;">
+            <span>완료 <b style="color:#333;">${stats.completed}</b></span>
+            <span style="color:#ddd;">|</span>
+            <span>전체 <b style="color:#333;">${stats.total}</b></span>
+          </div>
+        </div>
+        
+        <div class="stats-grid-2" style="margin-top:30px;">
+          <div class="stats-sub-box">
+            <div style="font-size:12px; font-weight:700; color:#D32F2F; margin-bottom:10px;">BS 점검대상</div>
+            <div style="font-size:22px; font-weight:800; color:#333; margin-bottom:4px;">${stats.regularCompletionRate}%</div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${stats.regularCompletionRate}%; background:#D32F2F;"></div></div>
+            <div style="font-size:12px; color:#777; margin-top:8px; font-weight:500;">완료 ${stats.regularCompleted} / ${stats.regularTotal}</div>
+          </div>
+          <div class="stats-sub-box">
+            <div style="font-size:12px; font-weight:700; color:#1565C0; margin-bottom:10px;">리워크(2026)</div>
+            <div style="font-size:22px; font-weight:800; color:#333; margin-bottom:6px;">${stats.reworkCompletionRate}%</div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${stats.reworkCompletionRate}%; background:#1565C0;"></div></div>
+            <div style="font-size:12px; color:#777; margin-top:8px; font-weight:500;">완료 ${stats.reworkCompleted} / ${stats.reworkTotal}</div>
+          </div>
+        </div>
+        
+        <div style="font-size:14px; font-weight:700; color:#444; margin:24px 0 12px 0; display:flex; align-items:center;">
+          <span class="material-icons" style="font-size:18px; margin-right:6px;">store</span> 영업점별 현황
+        </div>
+        <div class="branch-list-container">
+          ${branchHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  // 메모 저장
+  function saveMemoLocal(vin) {
+    const memo = document.getElementById('memo_' + vin).value;
+    if (!memo) {
+      if (!confirm('비어있는 메모를 저장하시겠습니까?')) return;
+    }
+
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (res) {
+        hideLoading();
+        alert('메모가 저장되었습니다.');
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        alert('저장 실패: ' + err);
+      })
+      .saveMemo(vin, memo);
+  }
+
+  // 완료 처리 모달
+  function openCompleteModal(vin) {
+    currentVinForComplete = vin;
+    document.getElementById('modalVinDisplay').innerText = '차대번호: ' + vin;
+
+    // 이전에 체크된 항목 초기화 (사진 4 대응)
+    document.getElementById('checkInspection').checked = false;
+    document.getElementById('checkReplace').checked = false;
+    document.getElementById('checkTransfer').checked = false;
+    document.getElementById('checkDisposal').checked = false;
+
+    document.getElementById('completeModal').style.display = 'flex';
+  }
+
+  function closeCompleteModal() {
+    document.getElementById('completeModal').style.display = 'none';
+  }
+
+  function executeComplete() {
+    const memo = document.getElementById('memo_' + currentVinForComplete).value;
+    const processTypes = {
+      inspection: document.getElementById('checkInspection').checked,
+      replace: document.getElementById('checkReplace').checked,
+      transfer: document.getElementById('checkTransfer').checked,
+      disposal: document.getElementById('checkDisposal').checked
+    };
+
+    if (!processTypes.inspection && !processTypes.replace && !processTypes.transfer && !processTypes.disposal) {
+      alert('처리 구분을 1개 이상 선택해주세요.');
+      return;
+    }
+
+    closeCompleteModal();
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (res) {
+        hideLoading();
+        if (res.success) {
+          alert('완료 처리되었습니다.');
+          handleBsSearch(); // 결과 새로고침
+        } else {
+          alert(res.message);
+        }
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        alert('처리 실패: ' + err);
+      })
+      .markAsComplete(currentVinForComplete, memo, processTypes);
+  }
+
+  function handleLogin() {
+    const empId = document.getElementById('empId').value;
+    const pw = document.getElementById('pw').value;
+
+    if (!empId || !pw) {
+      alert('사원번호와 비밀번호를 입력해주세요.');
+      return;
+    }
+
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (result) {
+        hideLoading();
+        if (result.success) {
+          userPermissions = result.permissions || [];
+          // 초기 서비스 파트 권한 설정 (영업점 통계 등에서 사용)
+          if (userPermissions.bs) {
+            const firstActiveIdx = userPermissions.bs.findIndex(p => p === 'O' || p === 'o');
+            if (firstActiveIdx !== -1) {
+              currentBsPart = `서비스${firstActiveIdx + 1}`;
+            }
+          }
+          showMain(result.userName);
+        } else {
+          alert(result.message);
+        }
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        alert('에러가 발생했습니다: ' + err);
+      })
+      .checkLogin(empId, pw);
+  }
+
+  function handleChangePassword() {
+    const empId = document.getElementById('changeEmpId').value;
+    const oldPw = document.getElementById('oldPw').value;
+    const newPw = document.getElementById('newPw').value;
+    const confirmPw = document.getElementById('confirmPw').value;
+
+    if (!empId || !oldPw || !newPw || !confirmPw) {
+      alert('모든 필드를 입력해주세요.');
+      return;
+    }
+
+    if (newPw !== confirmPw) {
+      alert('새 비밀번호와 확인 비밀번호가 일치하지 않습니다.');
+      return;
+    }
+
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (result) {
+        hideLoading();
+        if (result.success) {
+          alert(result.message);
+          showLogin();
+        } else {
+          alert(result.message);
+        }
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        alert('에러가 발생했습니다: ' + err);
+      })
+      .updatePassword(empId, oldPw, newPw);
+  }
+
+  /**
+   * 로그아웃
+   */
+  function handleLogout() {
+    if (!confirm('로그아웃 하시겠습니까?')) return;
+    userPermissions = null;
+    showLogin();
+    // 히스토리 초기화 (선택 사항)
+    history.replaceState({ view: 'login' }, 'Login');
+  }
+
+  /**
+   * Enter 키 이벤트 처리
+   */
+  function setupEnterKey() {
+    const inputs = [
+      { id: 'empId', action: handleLogin },
+      { id: 'pw', action: handleLogin },
+      { id: 'bsVinInput', action: handleBsSearch },
+      { id: 'bsMasterInput', action: handleMasterStatsSearch },
+      { id: 'branchSearchInput', action: handleBranchSearch }
+    ];
+
+    inputs.forEach(item => {
+      const el = document.getElementById(item.id);
+      if (el) {
+        el.addEventListener('keypress', function (e) {
+          if (e.key === 'Enter') {
+            item.action();
+          }
+        });
+      }
+    });
+  }
+
+  /**
+   * 뒤로가기 버튼 대응 (popstate)
+   */
+  window.onpopstate = function (event) {
+    if (event.state) {
+      if (event.state.view === 'main') {
+        showMain();
+      } else if (event.state.view === 'bsSearch') {
+        showBsSearchView();
+      } else if (event.state.view === 'branchAddress') {
+        showBranchAddressView();
+      } else if (event.state.view === 'login') {
+        showLogin();
+      }
+    } else {
+      // 상태가 없으면 메인 또는 로그인으로
+      if (userPermissions) showMain();
+      else showLogin();
+    }
+  };
+
+  // 초기 실행
+  window.onload = function () {
+    setupEnterKey();
+    // 초기 히스토리 상태 설정
+    history.replaceState({ view: 'login' }, 'Login');
+  };
+
+  /**
+   * 바코드 촬영 트리거
+   */
+  function triggerCamera() {
+    document.getElementById('directBarcodeCamera').click();
+  }
+
+  /**
+   * 촬영된 사진에서 바코드 인식 (네이티브 BarcodeDetector 방식)
+   */
+  function handleDirectBarcodeFile(input) {
+    if (input.files && input.files.length > 0) {
+      const imageFile = input.files[0];
+      showLoading();
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const img = new Image();
+        img.onload = function () {
+          const canvas = document.getElementById('barcodeCanvas');
+          const ctx = canvas.getContext('2d');
+
+          // 이미지 크기 최적화 (인식률 향상을 위해 최대 1200px)
+          const maxSize = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxSize) {
+              height *= maxSize / width;
+              width = maxSize;
+            }
+          } else {
+            if (height > maxSize) {
+              width *= maxSize / height;
+              height = maxSize;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          detectBarcodeFromCanvas(canvas, input);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(imageFile);
+    }
+  }
+
+  /**
+   * 캔버스에서 바코드 검출 및 서버 조회
+   */
+  function detectBarcodeFromCanvas(canvas, input) {
+    // 1. BarcodeDetector API 지원 확인 (Chrome Android 등 프리미엄 환경)
+    if ('BarcodeDetector' in window) {
+      const detector = new BarcodeDetector({
+        formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'qr_code']
+      });
+
+      detector.detect(canvas)
+        .then(barcodes => {
+          if (barcodes.length > 0) {
+            const barcode = barcodes[0].rawValue;
+            console.log("Native Scan Success:", barcode);
+            if (navigator.vibrate) navigator.vibrate(100);
+            callLookupBarcode(barcode, input);
+          } else {
+            hideLoading();
+            handleScanFallback("바코드를 자동 인식할 수 없습니다.", input);
+          }
+        })
+        .catch(err => {
+          hideLoading();
+          console.error("Native detector error:", err);
+          handleScanFallback("인식 오류가 발생했습니다.", input);
+        });
+    } else {
+      // 2. 미지원 환경 (iOS 등) 수동 입력 폴백
+      hideLoading();
+      handleScanFallback("자동 인식이 지원되지 않는 브라우저입니다.", input);
+    }
+  }
+
+  /**
+   * 스캔 실패 또는 미지원 시 수동 입력 폴백
+   */
+  function handleScanFallback(reason, input) {
+    const barcode = prompt(`${reason}\n사진에 보이는 바코드 번호를 직접 입력해주세요:`);
+    if (barcode && barcode.trim()) {
+      showLoading();
+      callLookupBarcode(barcode.trim(), input);
+    } else {
+      input.value = "";
+    }
+  }
+
+  /**
+   * 서버에 바코드 매칭 요청
+   */
+  function callLookupBarcode(barcode, input) {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        hideLoading();
+        input.value = "";
+        if (res.found) {
+          document.getElementById('bsVinInput').value = res.vin;
+          handleBsSearch(); // 자동 검색 실행
+        } else {
+          alert(res.error || "등록되지 않은 바코드입니다.");
+        }
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        input.value = "";
+        alert("바코드 조회 중 오류가 발생했습니다: " + err);
+      })
+      .lookupBarcode(barcode);
+  }
+</script>

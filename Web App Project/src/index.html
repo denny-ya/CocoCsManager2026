@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <?!= include('Style'); ?>
+  <?!= include('BsSearchStyle'); ?>
+  <?!= include('BranchAddressStyle'); ?>
+  <!-- 외부 라이브러리 의존성 제거 (네이티브 BarcodeDetector 사용) -->
+</head>
+
+<body>
+  <div id="app">
+    <!-- 로그인/비밀번호 변경용 중앙 정렬 래퍼 -->
+    <div id="authWrapper" class="center-wrapper">
+      <div class="login-container" id="loginView">
+        <div class="logo-area">
+          <img src="https://lh3.googleusercontent.com/d/1DkE0M_Jp1yO6V9y9L9lG8O8R8L8l_O8k" alt="hy MOBILITY"
+            onerror="this.src='https://via.placeholder.com/200x80?text=hy+MOBILITY'">
+        </div>
+
+        <h1 class="title">로그인</h1>
+        <p class="subtitle">등록된 사원만 로그인 가능합니다</p>
+
+        <div class="form-group">
+          <label>사원번호</label>
+          <input type="text" id="empId" placeholder="사원번호 입력">
+        </div>
+
+        <div class="form-group">
+          <label>비밀번호</label>
+          <input type="password" id="pw" placeholder="비밀번호 입력">
+        </div>
+
+        <button class="btn btn-primary" onclick="handleLogin()">
+          <span class="icon">🔑</span> 로그인
+        </button>
+
+        <button class="btn btn-secondary" onclick="showChangePassword()">
+          비밀번호 변경
+        </button>
+      </div>
+
+      <!-- 비밀번호 변경 모달/뷰 -->
+      <div class="login-container" id="changePwView" style="display: none;">
+        <h1 class="title">비밀번호 변경</h1>
+
+        <div class="form-group">
+          <label>사원번호</label>
+          <input type="text" id="changeEmpId" placeholder="사원번호 입력">
+        </div>
+
+        <div class="form-group">
+          <label>기존 비밀번호</label>
+          <input type="password" id="oldPw" placeholder="기존 비밀번호 입력">
+        </div>
+
+        <div class="form-group">
+          <label>새 비밀번호</label>
+          <input type="password" id="newPw" placeholder="새 비밀번호 입력">
+        </div>
+
+        <div class="form-group">
+          <label>비밀번호 확인</label>
+          <input type="password" id="confirmPw" placeholder="새 비밀번호 다시 입력">
+        </div>
+
+        <button class="btn btn-primary" onclick="handleChangePassword()">
+          변경하기
+        </button>
+
+        <button class="btn btn-text" onclick="showLogin()">
+          취소하고 돌아가기
+        </button>
+      </div>
+    </div>
+
+    <!-- 메인 화면 -->
+    <div id="mainView" style="display: none;">
+      <div class="main-header">
+        <div class="header-top">
+          <h2 class="app-name">Coco CS Manager</h2>
+          <button class="logout-btn" onclick="handleLogout()" title="로그아웃">
+            <span class="material-icons">logout</span>
+          </button>
+        </div>
+        <div class="header-bottom">
+          <p class="welcome-msg">반갑습니다, <span id="userNameDisplay">관리자</span>님!</p>
+        </div>
+      </div>
+
+      <div class="menu-list" id="menuList">
+        <!-- JS에서 메뉴 동적 생성 -->
+      </div>
+    </div>
+
+    <!-- BS 및 리워크 검색 화면 -->
+    <?!= include('BsSearch'); ?>
+
+    <!-- 영업점 주소록 화면 -->
+    <?!= include('BranchAddress'); ?>
+
+    <!-- 로딩 인디케이터 -->
+    <div id="loading" class="loading-overlay" style="display: none;">
+      <div class="spinner"></div>
+      <p>잠시만 기다려주세요...</p>
+    </div>
+  </div>
+
+  <?!= include('JavaScript'); ?>
+</body>
+
+</html>

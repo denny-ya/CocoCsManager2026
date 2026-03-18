@@ -24,11 +24,12 @@
   function showMain(userName) {
     document.getElementById('authWrapper').style.display = 'none';
     document.getElementById('mainView').style.display = 'block';
+    document.getElementById('bsSearchView').style.display = 'none';
+    document.getElementById('branchAddressView').style.display = 'none';
+
     if (userName) {
       document.getElementById('userNameDisplay').innerText = userName;
     }
-    document.getElementById('bsSearchView').style.display = 'none';
-    document.getElementById('branchAddressView').style.display = 'none';
     renderMenu();
 
     // 뒤로가기용 히스토리 추가
@@ -97,6 +98,301 @@
   let currentBsPart = '';
   let currentBsMasterPart = '';
   let currentVinForComplete = '';
+  let currentAddressPart = ''; // 영업점 주소록용 파트 보관
+
+  function showBranchAddressView() {
+    // 재진입 시 항상 검색 상태 초기화
+    const searchInput = document.getElementById('addressSearchInput');
+    if (searchInput) {
+      searchInput.value = '';
+    }
+    
+    document.getElementById('addressResults').innerHTML = `
+      <div class="empty-state">
+        <span class="material-icons">location_on</span>
+        <p>검색할 영업점 이름을 입력해주세요</p>
+      </div>`;
+
+    // 권한별 필터 칩 렌더링
+    if (userPermissions && userPermissions.address) {
+      renderAddressServiceChips(userPermissions.address);
+    }
+
+    document.getElementById('mainView').style.display = 'none';
+    document.getElementById('branchAddressView').style.display = 'block';
+
+    if (history.state?.view !== 'branchAddress') {
+      history.pushState({ view: 'branchAddress' }, 'Branch Address');
+    }
+  }
+
+  // 주소 클립보드 복사 함수 추가
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert('주소가 클립보드에 복사되었습니다.');
+      }).catch(err => {
+        console.error('복사 실패', err);
+        fallbackCopyTextToClipboard(text);
+      });
+    } else {
+      fallbackCopyTextToClipboard(text);
+    }
+  }
+
+  function fallbackCopyTextToClipboard(text) {
+    var textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.position = "fixed";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      alert('주소가 클립보드에 복사되었습니다.');
+    } catch (err) {
+      console.error('Fallback 복사 실패', err);
+      alert('주소 복사에 실패했습니다.');
+    }
+    document.body.removeChild(textArea);
+  }
+
+  function renderAddressServiceChips(addressPerm) {
+    const container = document.getElementById('addressPartChips');
+    container.innerHTML = '';
+    
+    // address 권한이 배열 형태('bs' 권한의 복사 여부)인지 확인. 
+    // 설계상 BS 권한 배열과 동일한 방식으로 작동하도록 작성(또는 필요시 수정)
+    // 원본 checkLogin 구조상 address는 단일값이지만, bs.서비스1~4와 통일성을 위해 bs 권한 배열을 대신 사용하도록 강제하거나, 향후 서버측 수정에 대비.
+    // 여기서는 화면 기획서에 '전체/서비스1/서비스2...' 가 있으므로 userPermissions.bs 를 기반으로 그리도록 함. (요구사항: "BS 및 리워크와 동일")
+    const bsPerms = userPermissions.bs || [];
+    
+    const activeServices = [];
+    bsPerms.forEach((p, i) => {
+      if (p === 'O' || p === 'o') {
+        activeServices.push({ id: `서비스${i + 1}`, label: `서비스${i + 1}` });
+      }
+    });
+
+    if (activeServices.length === 0) {
+      container.innerHTML = '<span style="font-size:12px; color:#999;">권한 없음</span>';
+      return;
+    }
+
+    let html = '';
+    const showAll = activeServices.length === 4;
+
+    if (showAll) {
+      html += `<span class="chip active" onclick="selectAddressPart(this, '')">전체</span>`;
+    }
+
+    activeServices.forEach((s, idx) => {
+      const isActive = (!showAll && idx === 0) ? 'active' : '';
+      html += `<span class="chip ${isActive}" onclick="selectAddressPart(this, '${s.id}')">${s.label}</span>`;
+    });
+    
+    if (activeServices.length === 4) {
+      currentAddressPart = '';
+    } else {
+      currentAddressPart = activeServices[0].id;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function selectAddressPart(el, val) {
+    document.querySelectorAll('#addressPartChips .chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    currentAddressPart = val;
+  }
+
+  function handleAddressSearch() {
+    const keyword = document.getElementById('addressSearchInput').value.trim();
+    if (!keyword) { alert('영업점 이름을 입력해주세요.'); return; }
+    
+    const container = document.getElementById('addressResults');
+    container.innerHTML = `
+      <div class="empty-state">
+        <span class="material-icons">search</span>
+        <p>${keyword} (${currentAddressPart || '전체'}) 검색 중입니다...</p>
+      </div>`;
+      
+    showLoading();
+
+    const bsSearchView = document.getElementById('bsSearchView');
+    if (bsSearchView && bsSearchView.style.display !== 'none') {
+      bsSearchView.style.display = 'none';
+      document.getElementById('bsVinResults').innerHTML = '';
+      document.getElementById('bsMasterResults').innerHTML = '';
+    }
+
+    google.script.run
+      .withSuccessHandler(function(results) {
+        hideLoading();
+        renderBranchAddressResults(results, keyword);
+      })
+      .withFailureHandler(function(err) {
+        hideLoading();
+        container.innerHTML = `
+          <div class="empty-state" style="color:#d32f2f;">
+            <span class="material-icons">error_outline</span>
+            <p>서버 조회 중 오류가 발생했습니다.<br>${err}</p>
+          </div>`;
+      })
+      .searchBranchAddress(keyword, currentAddressPart);
+  }
+
+  function renderBranchAddressResults(results, keyword) {
+    const container = document.getElementById('addressResults');
+    
+    if (results && results.error) {
+       container.innerHTML = `
+         <div class="empty-state" style="color:#d32f2f;">
+           <span class="material-icons">error_outline</span>
+           <p>오류: ${results.error}</p>
+         </div>`;
+       return;
+    }
+
+    if (!results || results.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">location_off</span>
+          <p>분류 '<b>${currentAddressPart || '전체'}</b>'에 해당하는<br>'<b>${keyword}</b>' 검색결과가 없습니다.</p>
+        </div>`;
+      return;
+    }
+
+    let html = '';
+    
+    results.forEach(branch => {
+      // 차량 리스트 생성 도우미
+      const getListHtml = (list, isRework) => {
+        if (!list || list.length === 0) return '';
+        return list.map(item => `
+          <div class="vehicle-item" onclick="executeBSearchFromAddress('${item.vin}')" style="background: white; border-radius: 4px; padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e0e0e0; cursor: pointer;">
+            <div class="vehicle-info" style="display: flex; align-items: center; gap: 8px;">
+              <span class="badge" style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; ${isRework ? 'background: #e3f2fd; color: #1976d2;' : 'background: #f5f5f5; color: #757575;'}">${item.cartVersion || '무관'}</span>
+              <span class="vin-text" style="font-size: 13px; font-weight: 500; color: #333;">${item.vin}</span>
+            </div>
+            <div class="status-icon">
+              ${item.completed 
+                ? '<span class="material-icons" style="color:#4CAF50; font-size: 18px;">check_circle</span>' 
+                : (isRework 
+                    ? '<span class="material-icons" style="color:#757575; font-size: 18px;">build</span>' 
+                    : '<span class="material-icons" style="color:#757575; font-size: 18px;">directions_car</span>')
+              }
+            </div>
+          </div>
+        `).join('');
+      };
+
+      html += `
+        <div class="card branch-card" style="margin-bottom:20px;">
+          <div class="branch-card-header">
+            <span class="material-icons header-icon">storefront</span>
+            <h3>${branch.name}</h3>
+          </div>
+          
+          <div class="branch-info-row">
+            <span class="info-label">주소</span>
+            <span class="info-content address-content">
+               ${branch.address}
+               <button class="icon-btn-small" onclick="copyToClipboard('${branch.address}')" style="border:none;background:none;color:#757575;cursor:pointer;padding:0;">
+                 <span class="material-icons" style="font-size:16px;">launch</span>
+               </button>
+            </span>
+          </div>
+          
+          <div class="branch-info-row">
+            <span class="info-label">영업점 번호</span>
+            <span class="info-content"><a href="tel:${branch.tel}">${branch.tel}</a></span>
+          </div>
+          
+          <div class="branch-info-row">
+            <span class="info-label">점장 번호</span>
+            <span class="info-content"><a href="tel:${branch.managerTel}">${branch.managerTel}</a></span>
+          </div>
+          
+          <div class="branch-stats-section">
+            <div class="stats-header">
+              <span class="material-icons" style="font-size:16px;">assignment</span>
+              <span>${branch.name} 작업 현황</span>
+            </div>
+            
+            <div class="total-progress" style="margin-bottom:12px;">
+              <div class="progress-title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <strong style="font-size: 13px; color: #333;">전체 완료율 <span style="color: #007bff; font-size: 14px;">${branch.stats.completionRate}%</span></strong>
+                <span class="progress-count" style="font-size: 12px; color: #757575;">${branch.stats.completedTarget} / ${branch.stats.totalTarget}</span>
+              </div>
+              <div class="progress-bar-container" style="background: #e0e0e0; height: 4px; border-radius: 2px;">
+                <div class="progress-bar-fill" style="background: #007bff; height: 100%; border-radius: 2px; width: ${branch.stats.completionRate}%;"></div>
+              </div>
+            </div>
+            
+            <div class="stats-grid">
+              <div class="stat-box">
+                <div class="stat-label bs-label" style="font-size:11px;color:#d32f2f;font-weight:bold;margin-bottom:4px;">BS 점검대상</div>
+                <div class="stat-value" style="font-size:15px;color:#333;"><strong>${branch.stats.bsRate}%</strong></div>
+                <div class="stat-count" style="font-size:11px;color:#999;margin-top:2px;">${branch.stats.bsCompleted}/${branch.stats.bsTotal}</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label rework-label" style="font-size:11px;color:#0d47a1;font-weight:bold;margin-bottom:4px;">리워크</div>
+                <div class="stat-value" style="font-size:15px;color:#333;"><strong>${branch.stats.reworkRate}%</strong></div>
+                <div class="stat-count" style="font-size:11px;color:#999;margin-top:2px;">${branch.stats.reworkCompleted}/${branch.stats.reworkTotal}</div>
+              </div>
+            </div>
+            
+            <div class="vehicle-lists address-vehicle-lists">
+              <div class="list-section">
+                <div class="list-title bs-label" style="font-size:11px;font-weight:bold;color:#d32f2f;margin-bottom:8px;">BS 점검대상 (${branch.stats.bsTotal})</div>
+                ${getListHtml(branch.stats.bsList, false)}
+                ${getListHtml(branch.stats.bsDoneList, false)}
+              </div>
+              
+              <div class="list-section" style="margin-top: 16px;">
+                <div class="list-title rework-label" style="font-size:11px;font-weight:bold;color:#1976d2;margin-bottom:8px;">리워크 (${branch.stats.reworkTotal})</div>
+                ${getListHtml(branch.stats.reworkList, true)}
+                ${getListHtml(branch.stats.reworkDoneList, true)}
+              </div>
+            </div>
+          </div>
+        </div>
+        <a href="https://map.naver.com/v5/search/${encodeURIComponent(branch.address)}" target="_blank" class="btn-naver" style="display: block; text-decoration: none; margin-top: 10px; margin-bottom: 20px; width: 100%; box-sizing: border-box; text-align: center;">
+          <span style="vertical-align: middle;">네이버 지도 앱 열기${results.length > 1 ? ` (${branch.name})` : ''}</span>
+        </a>
+      `;
+    });
+    
+    container.innerHTML = html;
+  }
+
+  /**
+   * 영업점 주소록 화면에서 차대번호 클릭 시 BS 화면으로 이동하여 검색
+   */
+  function executeBSearchFromAddress(vin) {
+    if (!vin) return;
+    
+    // 권한 검사 (BS 메뉴 권한이 있는지 확인)
+    if (!userPermissions || !userPermissions.bs || userPermissions.bs.length === 0) {
+      alert('BS 메뉴에 접근할 권한이 없습니다.');
+      return;
+    }
+    
+    // BS 검색 화면으로 전환
+    showBsSearchView();
+    
+    // 약간의 딜레이 후 검색어 세팅 및 검색 실행 (화면 렌더링 보장)
+    setTimeout(() => {
+      const inputEl = document.getElementById('bsVinInput');
+      if (inputEl) {
+        inputEl.value = vin;
+        handleBsSearch();
+      }
+    }, 150);
+  }
 
   function showBsSearchView() {
     // 진입 시 초기화
@@ -123,186 +419,11 @@
 
     document.getElementById('mainView').style.display = 'none';
     document.getElementById('bsSearchView').style.display = 'block';
-    document.getElementById('branchAddressView').style.display = 'none';
 
     // 뒤로가기용 히스토리 추가
     if (history.state?.view !== 'bsSearch') {
       history.pushState({ view: 'bsSearch' }, 'BS Search');
     }
-  }
-
-  // ── 영업점 주소록 관련 로직 ──
-  function showBranchAddressView() {
-    // 초기화
-    document.getElementById('branchSearchInput').value = '';
-    document.getElementById('branchResultContent').innerHTML = `
-      <div class="empty-state" style="padding: 60px 20px; text-align: center; color: #bbb;">
-        <span class="material-icons" style="font-size: 64px; margin-bottom: 16px; color: #f0f0f0;">storefront</span>
-        <p>찾으시는 영업점 이름을 입력해주세요</p>
-      </div>`;
-
-    document.getElementById('mainView').style.display = 'none';
-    document.getElementById('bsSearchView').style.display = 'none';
-    document.getElementById('branchAddressView').style.display = 'block';
-
-    if (history.state?.view !== 'branchAddress') {
-      history.pushState({ view: 'branchAddress' }, 'Branch Address');
-    }
-
-    // 서비스 칩 렌더링 추가
-    renderBranchServiceChips();
-  }
-
-  /**
-   * 영업점 주소록용 서비스 칩 렌더링 (권한 기반)
-   */
-  function renderBranchServiceChips() {
-    const container = document.getElementById('branchPartChips');
-    if (!container) return;
-    container.innerHTML = '';
-
-    if (!userPermissions || !userPermissions.bs) return;
-
-    const bsPerms = userPermissions.bs;
-    const activeServices = [];
-    bsPerms.forEach((p, i) => {
-      if (p === 'O' || p === 'o') {
-        activeServices.push({ name: `서비스${i + 1}` });
-      }
-    });
-
-    // 모든 서비스 권한이 있는 경우 '전체' 추가
-    if (activeServices.length === 4) {
-      const isAllActive = !currentBsPart || currentBsPart === '';
-      const allChip = createFilterChip('전체', isAllActive);
-      container.appendChild(allChip);
-      if (isAllActive) currentBsPart = '';
-    }
-
-    activeServices.forEach(s => {
-      const chip = createFilterChip(s.name, currentBsPart === s.name);
-      container.appendChild(chip);
-    });
-  }
-
-  function createFilterChip(label, isActive) {
-    const chip = document.createElement('div');
-    chip.className = 'filter-chip' + (isActive ? ' active' : '');
-    chip.innerText = label;
-    chip.onclick = function () {
-      const siblings = this.parentElement.querySelectorAll('.filter-chip');
-      siblings.forEach(s => s.classList.remove('active'));
-      this.classList.add('active');
-
-      const partName = label === '전체' ? '' : label;
-      currentBsPart = partName;
-
-      // 이미 키워드가 있는 경우 즉시 재검색
-      const keyword = document.getElementById('branchSearchInput').value.trim();
-      if (keyword) {
-        handleBranchSearch();
-      }
-    };
-    return chip;
-  }
-
-  /**
-   * 영업점 검색 실행
-   */
-  function handleBranchSearch() {
-    const keyword = document.getElementById('branchSearchInput').value.trim();
-    if (!keyword) { alert('영업점 이름을 입력해주세요.'); return; }
-
-    document.getElementById('branchResultContent').innerHTML = '';
-    document.getElementById('branchResultLoading').style.display = 'block';
-
-    // 1. 영업점 기본 정보 조회
-    google.script.run
-      .withSuccessHandler(function (info) {
-        if (!info || info.error) {
-          document.getElementById('branchResultLoading').style.display = 'none';
-          document.getElementById('branchResultContent').innerHTML = `
-            <div class="empty-state" style="padding: 60px 20px; text-align: center; color: #bbb;">
-              <span class="material-icons" style="font-size: 48px; margin-bottom: 12px; color: #ffcdd2;">error_outline</span>
-              <p>${info ? info.error : '영업점 정보를 찾을 수 없습니다.'}</p>
-            </div>`;
-          return;
-        }
-
-        // 2. 영업점 작업 현황(통계) 조회
-        google.script.run
-          .withSuccessHandler(function (stats) {
-            document.getElementById('branchResultLoading').style.display = 'none';
-            renderBranchResult(info, stats);
-          })
-          .withFailureHandler(function (err) {
-            document.getElementById('branchResultLoading').style.display = 'none';
-            alert('통계 조회 중 오류: ' + err);
-          })
-          .getBranchWorkCount(info.name, currentBsPart); // 현재 선택된 파트 권한 반영
-      })
-      .withFailureHandler(function (err) {
-        document.getElementById('branchResultLoading').style.display = 'none';
-        alert('영업점 조회 중 오류: ' + err);
-      })
-      .getSalesPointInfo(keyword);
-  }
-
-  /**
-   * 영업점 검색 결과 렌더링
-   */
-  function renderBranchResult(info, stats) {
-    const container = document.getElementById('branchResultContent');
-    const template = document.getElementById('branchCardTemplate').innerHTML;
-
-    let vehicleListHtml = '';
-
-    // 미완료 차량 우선 정렬하여 리스트 생성
-    const allVehicles = [...(stats.reworkVehicles || []), ...(stats.regularVehicles || [])];
-
-    if (allVehicles.length === 0) {
-      vehicleListHtml = '<p style="text-align:center; color:#999; font-size:13px; padding:20px;">대상 차량이 없습니다.</p>';
-    } else {
-      allVehicles.forEach(v => {
-        const isDone = v.status === '완료';
-        vehicleListHtml += `
-          <div class="vehicle-mini-item" onclick="jumpToBsSearch('${v.vin}')">
-            <div>
-              <span class="vin">${v.vin}</span>
-              <span style="font-size:11px; color:#999; margin-left:6px;">(${v.cartVersion})</span>
-            </div>
-            <span class="status-tag ${isDone ? 'done' : 'todo'}">${v.status}</span>
-          </div>
-        `;
-      });
-    }
-
-    const html = template
-      .replace('{{name}}', info.name)
-      .replace('{{address}}', info.address || '-')
-      .replace('{{phone}}', info.phone || '-')
-      .replace('{{phone}}', info.phone || '-') // tel 링크용 재사용
-      .replace('{{managerPhone}}', info.managerPhone || '-')
-      .replace('{{managerPhone}}', info.managerPhone || '-') // tel 링크용 재사용
-      .replace('{{encodedAddress}}', encodeURIComponent(info.address || info.name))
-      .replace('{{partName}}', currentBsPart || '전체')
-      .replace('{{total}}', stats.total)
-      .replace('{{completed}}', stats.completed)
-      .replace('{{remaining}}', stats.remaining)
-      .replace('{{completionRate}}', stats.completionRate)
-      .replace('{{vehicleListHtml}}', vehicleListHtml);
-
-    container.innerHTML = html;
-  }
-
-  /**
-   * 영업점 리스트에서 BS 검색으로 바로가기
-   */
-  function jumpToBsSearch(vin) {
-    if (!vin) return;
-    showBsSearchView();
-    document.getElementById('bsVinInput').value = vin;
-    handleBsSearch();
   }
 
   /**
@@ -522,8 +643,6 @@
         <div class="info-row"><span class="info-label">지구</span><span class="info-value">${item.district || '-'}</span></div>
         <div class="info-row"><span class="info-label">마스터</span><span class="info-value">${item.master}</span></div>
         <div class="info-row"><span class="info-label">제조일</span><span class="info-value">${item.manufactureDate}</span></div>
-        
-        ${summaryHtml}
 
         <div class="memo-box">
           <div class="memo-title"><span class="material-icons" style="font-size:14px; vertical-align:middle;">edit_note</span> 비고 / 메모</div>
@@ -532,7 +651,10 @@
              <button class="save-memo-btn" onclick="saveMemoLocal('${item.vin}')">저장하기</button>
           </div>
         </div>
-        ${!isCompleted ? `<button class="complete-action-btn" onclick="openCompleteModal('${item.vin}')">점검 완료 처리</button>` : ''}
+        
+        ${summaryHtml}
+        
+        ${!isCompleted ? `<button class="complete-action-btn" style="margin-top: 10px;" onclick="openCompleteModal('${item.vin}')">점검 완료 처리</button>` : ''}
       `;
       container.appendChild(card);
     });
@@ -706,7 +828,13 @@
         hideLoading();
         if (res.success) {
           alert('완료 처리되었습니다.');
-          handleBsSearch(); // 결과 새로고침
+          handleBsSearch(); // 내 결과 새로고침
+          
+          // 영업점 주소록 화면도 백그라운드에서 동시 새로고침 (열려있을 경우 대비)
+          const addrInput = document.getElementById('addressSearchInput');
+          if (addrInput && addrInput.value.trim()) {
+            handleAddressSearch();
+          }
         } else {
           alert(res.message);
         }
@@ -733,13 +861,6 @@
         hideLoading();
         if (result.success) {
           userPermissions = result.permissions || [];
-          // 초기 서비스 파트 권한 설정 (영업점 통계 등에서 사용)
-          if (userPermissions.bs) {
-            const firstActiveIdx = userPermissions.bs.findIndex(p => p === 'O' || p === 'o');
-            if (firstActiveIdx !== -1) {
-              currentBsPart = `서비스${firstActiveIdx + 1}`;
-            }
-          }
           showMain(result.userName);
         } else {
           alert(result.message);
@@ -805,8 +926,7 @@
       { id: 'empId', action: handleLogin },
       { id: 'pw', action: handleLogin },
       { id: 'bsVinInput', action: handleBsSearch },
-      { id: 'bsMasterInput', action: handleMasterStatsSearch },
-      { id: 'branchSearchInput', action: handleBranchSearch }
+      { id: 'bsMasterInput', action: handleMasterStatsSearch }
     ];
 
     inputs.forEach(item => {

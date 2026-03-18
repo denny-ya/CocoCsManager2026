@@ -20,11 +20,12 @@
         <!-- JavaScript에서 동적으로 생성됨 -->
       </div>
       <div class="search-input-group">
-        <input type="text" id="bsVinInput" placeholder="차대번호 입력 (예: HYM322...)">
+        <input type="text" id="bsVinInput" placeholder="차대번호 입력 (예: HYM322...)" onkeypress="if(event.key==='Enter') handleBsSearch()">
         <button class="barcode-btn" onclick="triggerCamera()" title="바코드 촬영">
           <span class="material-icons">photo_camera</span>
         </button>
-        <input type="file" id="directBarcodeCamera" accept="image/*" capture="environment" style="display:none" onchange="handleDirectBarcodeFile(this)">
+        <input type="file" id="directBarcodeCamera" accept="image/*" capture="environment" style="display:none"
+          onchange="handleDirectBarcodeFile(this)">
         <button class="search-btn" onclick="handleBsSearch()">
           <span class="material-icons">search</span>
         </button>
@@ -46,7 +47,7 @@
         <!-- JavaScript에서 동적으로 생성됨 -->
       </div>
       <div class="search-input-group">
-        <input type="text" id="bsMasterInput" placeholder="마스터 이름 입력 (예: 홍길동)">
+        <input type="text" id="bsMasterInput" placeholder="마스터 이름 입력 (예: 홍길동)" onkeypress="if(event.key==='Enter') handleMasterStatsSearch()">
         <button class="search-btn" onclick="handleMasterStatsSearch()">
           <span class="material-icons">bar_chart</span>
         </button>
@@ -67,7 +68,7 @@
   <div class="modal-card">
     <h3 class="modal-title">점검 완료 처리</h3>
     <p class="modal-vin" id="modalVinDisplay"></p>
-    
+
     <div class="checkbox-group">
       <p class="modal-label">처리구분 선택 (1개 이상)</p>
       <label class="check-item">
@@ -93,4 +94,3 @@
 
 <!-- 바코드 분석을 위한 숨겨진 캔버스 (Native BarcodeDetector 방식용) -->
 <canvas id="barcodeCanvas" style="display: none;"></canvas>
-

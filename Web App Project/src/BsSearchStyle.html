@@ -7,13 +7,13 @@
     background-color: #0051A2;
     color: white;
   }
-  
+
   .view-title {
     margin: 0 0 0 12px;
     font-size: 18px;
     font-weight: 700;
   }
-  
+
   .icon-btn {
     background: none;
     border: none;
@@ -24,9 +24,9 @@
     padding: 4px;
     border-radius: 50%;
   }
-  
+
   .icon-btn:active {
-    background-color: rgba(255,255,255,0.1);
+    background-color: rgba(255, 255, 255, 0.1);
   }
 
   /* 탭 */
@@ -35,7 +35,7 @@
     background-color: white;
     border-bottom: 1px solid #eee;
   }
-  
+
   .tab-item {
     flex: 1;
     text-align: center;
@@ -46,7 +46,7 @@
     cursor: pointer;
     border-bottom: 2px solid transparent;
   }
-  
+
   .tab-item.active {
     color: #0051A2;
     font-weight: 700;
@@ -57,15 +57,15 @@
   .bs-section {
     padding: 16px;
   }
-  
+
   .search-box {
     background: white;
     padding: 16px;
     border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     margin-bottom: 20px;
   }
-  
+
   .part-chips {
     display: flex;
     gap: 8px;
@@ -73,7 +73,7 @@
     overflow-x: auto;
     padding-bottom: 4px;
   }
-  
+
   .chip {
     padding: 6px 14px;
     background-color: #f5f5f5;
@@ -84,19 +84,19 @@
     cursor: pointer;
     white-space: nowrap;
   }
-  
+
   .chip.active {
     background-color: #E3F2FD;
     border-color: #0051A2;
     color: #0051A2;
     font-weight: 700;
   }
-  
+
   .search-input-group {
     display: flex;
     gap: 8px;
   }
-  
+
   .search-input-group input {
     flex: 1;
     padding: 12px 16px;
@@ -104,7 +104,7 @@
     border-radius: 8px;
     font-size: 14px;
   }
-  
+
   .search-btn {
     width: 48px;
     background-color: #0051A2;
@@ -140,9 +140,9 @@
     border-radius: 16px;
     padding: 16px;
     margin-bottom: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
-  
+
   .status-badge {
     padding: 8px;
     border-radius: 8px;
@@ -151,19 +151,34 @@
     font-size: 14px;
     margin-bottom: 12px;
   }
-  
-  .badge-target { background: #FFEBEE; color: #D32F2F; }
-  .badge-rework { background: #E3F2FD; color: #1976D2; }
-  .badge-completed { background: #E8F5E9; color: #388E3C; }
-  .badge-non-target { background: #F5F5F5; color: #757575; }
-  
+
+  .badge-target {
+    background: #FFEBEE;
+    color: #D32F2F;
+  }
+
+  .badge-rework {
+    background: #E3F2FD;
+    color: #1976D2;
+  }
+
+  .badge-completed {
+    background: #E8F5E9;
+    color: #388E3C;
+  }
+
+  .badge-non-target {
+    background: #F5F5F5;
+    color: #757575;
+  }
+
   .status-badges-container {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-bottom: 12px;
   }
-  
+
   .vehicle-card .status-badge {
     width: 100%;
     margin-bottom: 0px;
@@ -172,17 +187,29 @@
     align-items: center;
     justify-content: center;
   }
+
   .info-row {
     display: flex;
     justify-content: space-between;
     padding: 8px 0;
     border-bottom: 1px solid #f5f5f5;
   }
-  
-  .info-label { font-size: 14px; color: #666; }
-  .info-value { font-size: 14px; font-weight: 500; }
-  .info-value.bold { font-weight: 700; color: #0051A2; }
-  
+
+  .info-label {
+    font-size: 14px;
+    color: #666;
+  }
+
+  .info-value {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .info-value.bold {
+    font-weight: 700;
+    color: #0051A2;
+  }
+
   .memo-box {
     margin-top: 12px;
     background: #FFFDE7;
@@ -190,8 +217,14 @@
     border-radius: 8px;
     border: 1px solid #FFF9C4;
   }
-  
-  .memo-title { font-size: 13px; font-weight: 700; color: #D32F2F; margin-bottom: 6px; }
+
+  .memo-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #D32F2F;
+    margin-bottom: 6px;
+  }
+
   .memo-textarea {
     width: 100%;
     background: transparent;
@@ -201,7 +234,7 @@
     font-family: inherit;
     box-sizing: border-box;
   }
-  
+
   .save-memo-btn {
     margin-top: 8px;
     font-size: 12px;
@@ -226,10 +259,23 @@
   }
 
   /* 통계 뷰 */
-  .stats-header { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
-  .progress-section { text-align: center; margin-bottom: 20px; }
-  .progress-main-rate { font-size: 32px; font-weight: 800; color: #0051A2; }
-  
+  .stats-header {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+  }
+
+  .progress-section {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+
+  .progress-main-rate {
+    font-size: 32px;
+    font-weight: 800;
+    color: #0051A2;
+  }
+
   .progress-bar-bg {
     width: 100%;
     height: 8px;
@@ -238,24 +284,41 @@
     overflow: hidden;
     margin: 8px 0;
   }
-  
-  .progress-bar-fill { height: 100%; background: #0051A2; border-radius: 4px; }
-  
-  .stats-summary { display: flex; justify-content: space-around; margin-bottom: 20px; }
-  .stats-item-box { flex: 1; background: #f9f9f9; padding: 12px; border-radius: 12px; margin: 0 4px; }
-  
+
+  .progress-bar-fill {
+    height: 100%;
+    background: #0051A2;
+    border-radius: 4px;
+  }
+
+  .stats-summary {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 20px;
+  }
+
+  .stats-item-box {
+    flex: 1;
+    background: #f9f9f9;
+    padding: 12px;
+    border-radius: 12px;
+    margin: 0 4px;
+  }
+
   /* 모달 */
   .modal-overlay {
     position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.5);
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1000;
   }
-  
+
   /* 요약 박스 (영업점 작업 현황) */
   .summary-box {
     background-color: #f8faff;
@@ -263,7 +326,7 @@
     padding: 16px;
     margin-top: 16px;
   }
-  
+
   .summary-title {
     display: flex;
     align-items: center;
@@ -272,44 +335,65 @@
     color: #555;
     margin-bottom: 12px;
   }
-  
+
   .summary-grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 8px;
     text-align: center;
   }
-  
-  .summary-item-label { font-size: 11px; color: #888; margin-bottom: 4px; }
-  .summary-item-rate { font-size: 18px; font-weight: 800; }
-  .summary-item-count { font-size: 12px; color: #999; margin-top: 2px; }
-  
-  .color-total { color: #333; }
-  .color-bs { color: #D32F2F; }
-  .color-rework { color: #1565C0; }
+
+  .summary-item-label {
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 4px;
+  }
+
+  .summary-item-rate {
+    font-size: 18px;
+    font-weight: 800;
+  }
+
+  .summary-item-count {
+    font-size: 12px;
+    color: #999;
+    margin-top: 2px;
+  }
+
+  .color-total {
+    color: #333;
+  }
+
+  .color-bs {
+    color: #D32F2F;
+  }
+
+  .color-rework {
+    color: #1565C0;
+  }
 
   /* 마스터 통계 고도화 */
   .stats-card-main {
     background: white;
     border-radius: 16px;
     padding: 24px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   }
-  
+
   .stats-grid-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
     margin: 20px 0;
   }
-  
+
   .stats-sub-box {
     background: #fdfdfd;
     border: 1px solid #f0f0f0;
     padding: 14px;
     border-radius: 12px;
   }
-  
+
   .branch-list-container {
     margin-top: 20px;
     border: 1px solid #BBDEFB;
@@ -319,34 +403,34 @@
     max-height: 400px;
     overflow-y: auto;
   }
-  
+
   .detailed-branch-card {
     background: white;
     border-radius: 10px;
     padding: 14px;
     margin-bottom: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   }
-  
+
   .branch-card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
   }
-  
+
   .mini-stats-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
   }
-  
+
   .mini-stats-item {
     background: #fcfcfc;
     padding: 8px;
     border-radius: 6px;
   }
-  
+
   .mini-bar-group {
     display: flex;
     justify-content: space-between;
@@ -361,9 +445,12 @@
     border-radius: 2px;
     overflow: hidden;
   }
-  
-  .mini-bar-fill { height: 100%; border-radius: 2px; }
-  
+
+  .mini-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+  }
+
   .modal-card {
     background: white;
     width: 85%;
@@ -371,18 +458,59 @@
     padding: 24px;
     border-radius: 20px;
   }
-  
-  .modal-title { margin: 0 0 8px 0; font-size: 18px; }
-  .modal-vin { font-size: 14px; color: #999; margin-bottom: 16px; }
-  .modal-label { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
-  
-  .check-item { display: block; padding: 8px 0; font-size: 15px; cursor: pointer; }
-  .check-item input { margin-right: 8px; }
-  
-  .modal-buttons { display: flex; gap: 10px; margin-top: 20px; }
-  .modal-btn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; }
-  .cancel-btn { background: #eee; color: #666; }
-  .confirm-btn { background: #0051A2; color: white; }
+
+  .modal-title {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+  }
+
+  .modal-vin {
+    font-size: 14px;
+    color: #999;
+    margin-bottom: 16px;
+  }
+
+  .modal-label {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  .check-item {
+    display: block;
+    padding: 8px 0;
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  .check-item input {
+    margin-right: 8px;
+  }
+
+  .modal-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .modal-btn {
+    flex: 1;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .cancel-btn {
+    background: #eee;
+    color: #666;
+  }
+
+  .confirm-btn {
+    background: #0051A2;
+    color: white;
+  }
 
   /* 빈 도화지 상태 */
   .empty-state {
@@ -390,6 +518,10 @@
     padding: 60px 20px;
     color: #999;
   }
-  
-  .empty-state .material-icons { font-size: 60px; margin-bottom: 16px; opacity: 0.3; }
+
+  .empty-state .material-icons {
+    font-size: 60px;
+    margin-bottom: 16px;
+    opacity: 0.3;
+  }
 </style>

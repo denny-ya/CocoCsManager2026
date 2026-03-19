@@ -1,0 +1,139 @@
+<!-- 배차 관리 화면 -->
+<div id="deliveryView" style="display: none;">
+  <div class="header-with-back">
+    <button class="icon-btn" onclick="showMainView()">
+      <span class="material-icons">arrow_back</span>
+    </button>
+    <h2 class="view-title">물류 배차 현황 조회</h2>
+  </div>
+
+  <!-- 권한별 동적 생성될 탭 바 -->
+  <div class="tabs" id="deliveryTabs">
+    <!-- JavaScript에서 권한(J, K, L열)에 따라 동적으로 구성됨 -->
+  </div>
+
+  <!-- 탭1: 배차 신청 섹션 -->
+  <div id="deliveryApplySection" class="bs-section">
+    <div class="form-container">
+      <h3 style="color:#0051A2; margin-top:0; margin-bottom: 16px; font-size: 16px;">새로운 배차 신청</h3>
+      
+      <div class="form-group">
+        <label>요청자(점장)명</label>
+        <input type="text" id="applyName" placeholder="요청자명 자동입력" readonly class="readonly-input">
+      </div>
+
+      <div class="form-group">
+        <label>분류</label>
+        <select id="applyCategory" onchange="handleDeliveryCategoryChange()">
+          <option value="">분류를 선택하세요</option>
+          <option value="입고">입고</option>
+          <option value="출고">출고</option>
+          <option value="노후카트 회수">노후카트 회수</option>
+          <option value="물품/고품 이동">물품/고품 이동</option>
+          <option value="직접 입력">직접 입력</option>
+        </select>
+        <input type="text" id="applyCategoryCustom" placeholder="분류 직접 입력" style="display:none; margin-top:8px;">
+      </div>
+      
+      <div class="form-group">
+        <label>출발지</label>
+        <select id="applyOriginPart" onchange="handleDeliveryPartChange('origin')">
+          <option value="">파트 선택</option>
+          <option value="서비스팩토리">서비스팩토리</option>
+          <option value="부곡창고">부곡창고</option>
+          <option value="서비스1">서비스1</option>
+          <option value="서비스2">서비스2</option>
+          <option value="서비스3">서비스3</option>
+          <option value="서비스4">서비스4</option>
+        </select>
+        <select id="applyOriginBranch" onchange="handleDeliveryBranchChange('origin')">
+          <option value="">영업점을 선택하세요</option>
+        </select>
+        <input type="text" id="applyOriginAddress" placeholder="선택된 영업점 주소가 자동 입력됩니다" readonly class="readonly-input">
+        <input type="text" id="applyOriginManual" placeholder="출발지 변경란 (필요 시 수기 입력)">
+      </div>
+
+      <div class="form-group">
+        <label>내용물</label>
+        <input type="text" id="applyContents" placeholder="내용물을 입력하세요">
+      </div>
+      
+      <div class="form-group">
+        <label>목적지</label>
+        <select id="applyDestPart" onchange="handleDeliveryPartChange('dest')">
+          <option value="">파트 선택</option>
+          <option value="서비스팩토리">서비스팩토리</option>
+          <option value="부곡창고">부곡창고</option>
+          <option value="서비스1">서비스1</option>
+          <option value="서비스2">서비스2</option>
+          <option value="서비스3">서비스3</option>
+          <option value="서비스4">서비스4</option>
+        </select>
+        <select id="applyDestBranch" onchange="handleDeliveryBranchChange('dest')">
+          <option value="">영업점을 선택하세요</option>
+        </select>
+        <input type="text" id="applyDestAddress" placeholder="선택된 영업점 주소가 자동 입력됩니다" readonly class="readonly-input">
+        <input type="text" id="applyDestManual" placeholder="목적지 변경란 (필요 시 수기 입력)">
+      </div>
+      
+      <div class="form-group">
+        <label>배차 희망일</label>
+        <input type="date" id="applyDate">
+      </div>
+      
+      <div class="form-group">
+        <label>비고</label>
+        <textarea id="applyNote" placeholder="필요한 내용을 입력하세요" rows="4"></textarea>
+      </div>
+
+      <button class="btn btn-primary" onclick="submitDeliveryApply()" style="margin-top:20px;">
+        <span class="material-icons" style="font-size:18px; vertical-align:-3px; margin-right:4px;">send</span> 배차 신청하기
+      </button>
+    </div>
+  </div>
+
+  <!-- 탭2: 배차 승인 대기열 섹션 (권한자 전용) -->
+  <div id="deliveryApproveSection" class="bs-section" style="display: none;">
+    <div class="search-box">
+      <div style="font-size: 14px; font-weight: bold; color: #333; margin-bottom: 8px;">
+        <span class="material-icons" style="font-size: 16px; vertical-align: middle; color: #f57c00;">pending_actions</span>
+        승인 대기중인 내역
+      </div>
+      <button class="btn btn-secondary" style="padding:8px; font-size:13px; width:auto;" onclick="loadDeliveryApprovals()">새로고침</button>
+    </div>
+    
+    <div id="deliveryApproveResults" class="results-container">
+      <div class="empty-state">
+        <span class="material-icons">hourglass_empty</span>
+        <p>승인 대기중인 배차 신청이 없습니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 탭3: 전체 배차 목록 현황 섹션 -->
+  <div id="deliveryListSection" class="bs-section" style="display: none;">
+    <div class="search-box">
+      <div class="search-input-group">
+        <input type="text" id="deliverySearchInput" placeholder="목적지 또는 요청자 이름 검색" onkeypress="if(event.key==='Enter') loadDeliveryList()">
+        <button class="search-btn" onclick="loadDeliveryList()">
+          <span class="material-icons">search</span>
+        </button>
+      </div>
+      <div class="filter-group" style="margin-top: 10px; display:flex; gap:8px;">
+        <select id="deliveryStatusFilter" style="flex:1; padding: 10px; border-radius: 8px; border: 1px solid #e1e8ed; outline:none;" onchange="loadDeliveryList()">
+          <option value="ALL">진행 상태 전체</option>
+          <option value="WAITING">대기중</option>
+          <option value="APPROVED">승인됨(배차완료)</option>
+          <option value="REJECTED">반려됨</option>
+        </select>
+      </div>
+    </div>
+    
+    <div id="deliveryListResults" class="results-container">
+      <div class="empty-state">
+        <span class="material-icons">list_alt</span>
+        <p>조건에 맞는 배차 기록이 없습니다.</p>
+      </div>
+    </div>
+  </div>
+</div>

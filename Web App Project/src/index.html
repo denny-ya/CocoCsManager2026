@@ -7,6 +7,7 @@
   <?!= include('Style'); ?>
   <?!= include('BsSearchStyle'); ?>
   <?!= include('BranchAddressStyle'); ?>
+  <?!= include('DeliveryManagementStyle'); ?>
   <!-- 외부 라이브러리 의존성 제거 (네이티브 BarcodeDetector 사용) -->
 </head>
 
@@ -100,6 +101,9 @@
 
     <!-- BS 및 리워크 검색 화면 -->
     <?!= include('BsSearch'); ?>
+
+    <!-- 차량 배차 관리 화면 -->
+    <?!= include('DeliveryManagement'); ?>
 
     <!-- 로딩 인디케이터 -->
     <div id="loading" class="loading-overlay" style="display: none;">

@@ -70,6 +70,7 @@ function checkLogin(employeeId, password) {
  */
 const BS_SPREADSHEET_ID = '1uhkhWWBzvleJwKR_D-VAWXNWq7O3JwB4fib7vKZ52iY';
 const BRANCH_ADDRESS_SPREADSHEET_ID = '10vY7bq8AXW3XkimW-ibyOGh4LaWRCLaR1Df69Iy9Lt0';
+const DELIVERY_SPREADSHEET_ID = '1IiUSZmNSG8PCZJtyNPNqE1ZXByRIpHJSOeuX6X9H3qc';
 
 
 /**
@@ -484,6 +485,109 @@ function mapRowToVehicleData(row, rowNum) {
     processDisposal: String(row[20] || ''),   // U
     barcodeVin: String(row[21] || '').trim()  // V
   };
+}
+
+function normalizeText(value) {
+  return String(value || '').toLowerCase().trim().replace(/\s+/g, '');
+}
+
+/**
+ * 배차 신청용 파트별 영업점 옵션 조회
+ * 주소록 시트 구조: A(분류), B(영업점), C(주소)
+ */
+function getDeliveryBranchOptionsByPart(part) {
+  try {
+    const selectedPart = String(part || '').trim();
+    if (!selectedPart) return { success: true, items: [] };
+
+    const ss = SpreadsheetApp.openById(BRANCH_ADDRESS_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+    const data = sheet.getDataRange().getValues();
+    const partKey = normalizeText(selectedPart);
+    const dedupe = {};
+    const items = [];
+
+    for (let i = 1; i < data.length; i++) {
+      const rowPart = normalizeText(data[i][0]); // A열: 분류
+      const branch = String(data[i][1] || '').trim(); // B열: 영업점
+      const address = String(data[i][2] || '').trim(); // C열: 주소
+
+      if (!branch) continue;
+      if (rowPart !== partKey) continue;
+
+      const key = normalizeText(branch);
+      if (dedupe[key]) continue;
+      dedupe[key] = true;
+      items.push({ branch: branch, address: address });
+    }
+
+    items.sort(function (a, b) {
+      return a.branch.localeCompare(b.branch, 'ko');
+    });
+
+    return { success: true, items: items };
+  } catch (e) {
+    return { success: false, message: e.toString(), items: [] };
+  }
+}
+
+/**
+ * 배차 신청 저장
+ * 저장 위치: 배차 목록 스프레드시트 A~O
+ */
+function saveDeliveryApply(payload) {
+  try {
+    if (!payload) return { success: false, message: '저장할 데이터가 없습니다.' };
+
+    const requesterName = String(payload.requesterName || '').trim();
+    const category = String(payload.category || '').trim();
+    const categoryCustom = String(payload.categoryCustom || '').trim();
+    const originPart = String(payload.originPart || '').trim();
+    const originBranch = String(payload.originBranch || '').trim();
+    const originAddress = String(payload.originAddress || '').trim();
+    const originManual = String(payload.originManual || '').trim();
+    const contents = String(payload.contents || '').trim();
+    const destPart = String(payload.destPart || '').trim();
+    const destBranch = String(payload.destBranch || '').trim();
+    const destAddress = String(payload.destAddress || '').trim();
+    const destManual = String(payload.destManual || '').trim();
+    const preferredDate = String(payload.preferredDate || '').trim();
+    const note = String(payload.note || '').trim();
+
+    if (!requesterName) return { success: false, message: '요청자명이 필요합니다.' };
+    if (!category) return { success: false, message: '분류를 선택해주세요.' };
+    if (category === '직접 입력' && !categoryCustom) return { success: false, message: '분류 직접 입력값이 필요합니다.' };
+    if (!originPart || !originBranch || !originAddress) return { success: false, message: '출발지 정보가 누락되었습니다.' };
+    if (!destPart || !destBranch || !destAddress) return { success: false, message: '목적지 정보가 누락되었습니다.' };
+    if (!preferredDate) return { success: false, message: '배차 희망일을 선택해주세요.' };
+
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+
+    // A~O 저장: N열은 현재 규격상 미사용으로 공란 유지
+    const row = [
+      requesterName, // A 요청자명
+      category, // B 분류
+      categoryCustom, // C 분류(직접입력)
+      originPart, // D 출발 파트
+      originBranch, // E 출발 영업점
+      originAddress, // F 출발 주소
+      originManual, // G 출발지 변경(수기)
+      contents, // H 내용물
+      destPart, // I 목적 파트
+      destBranch, // J 목적 영업점
+      destAddress, // K 목적 주소
+      destManual, // L 목적지 변경(수기)
+      preferredDate, // M 배차 희망일
+      '', // N 미사용
+      note // O 비고
+    ];
+
+    sheet.appendRow(row);
+    return { success: true, message: '배차 신청이 저장되었습니다.' };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
 }
 
 /**

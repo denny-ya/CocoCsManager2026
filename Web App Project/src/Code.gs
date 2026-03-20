@@ -63,54 +63,12 @@ function checkLogin(employeeId, password) {
 }
 
 /**
- * 비밀번호 변경
- */
-/**
  * 비밀번호 변경용 스프레드시트 (위 SPREADSHEET_ID와 동일하게 사용 중)
  */
 const BS_SPREADSHEET_ID = '1uhkhWWBzvleJwKR_D-VAWXNWq7O3JwB4fib7vKZ52iY';
 const BRANCH_ADDRESS_SPREADSHEET_ID = '10vY7bq8AXW3XkimW-ibyOGh4LaWRCLaR1Df69Iy9Lt0';
 const DELIVERY_SPREADSHEET_ID = '1IiUSZmNSG8PCZJtyNPNqE1ZXByRIpHJSOeuX6X9H3qc';
 
-
-/**
- * BS 및 리워크 검색
- */
-function searchBS(keyword, part) {
-  try {
-    const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
-    const sheet = ss.getSheets()[0];
-    const data = sheet.getDataRange().getValues();
-    const results = [];
-    
-    if (!keyword) return [];
-
-    const searchStr = String(keyword).trim().toUpperCase();
-    const lowerPart = part ? part.toLowerCase().trim() : '';
-
-    // 데이터는 5행(index 4)부터 시작
-    for (let i = 4; i < data.length; i++) {
-      const row = data[i];
-      const vin = String(row[1] || '').trim().toUpperCase();    // B열(1): 차대번호
-      const barcodeVin = String(row[21] || '').trim().toUpperCase(); // V열(21): 바코드 차대번호
-      const rowPart = String(row[10] || '').toLowerCase();      // K열(10): 부품/파트
-
-      // 차대번호 또는 바코드 차대번호 매칭
-      if (vin.includes(searchStr) || barcodeVin.includes(searchStr)) {
-        if (!lowerPart || rowPart.includes(lowerPart)) {
-          results.push(mapRowToVehicleData(row, i + 1));
-        }
-      }
-      // 최대 30건 초과 시 루프 종료 (성능 최적화)
-      if (results.length >= 30) break;
-    }
-    
-    return results;
-  } catch (e) {
-    console.error('searchBS error: ' + e.toString());
-    return { error: e.toString() };
-  }
-}
 
 /**
  * 영업점 주소록 검색 및 연관된 BS 데이터 집계
@@ -284,13 +242,13 @@ function searchBS(keyword, part) {
     if (!keyword) return [];
 
     const searchStr = String(keyword).trim().toUpperCase();
-    const lowerPart = part ? part.toLowerCase().trim().replace(/\s+/g, '') : ''; // Added .replace(/\s+/g, '')
+    const lowerPart = part ? part.toLowerCase().trim().replace(/\s+/g, '') : '';
 
     for (let i = 4; i < data.length; i++) {
       const row = data[i];
       const vin = String(row[1] || '').trim().toUpperCase();
       const barcodeVin = String(row[21] || '').trim().toUpperCase();
-      const rowPart = String(row[10] || '').toLowerCase().replace(/\s+/g, ''); // Added .replace(/\s+/g, '')
+      const rowPart = String(row[10] || '').toLowerCase().replace(/\s+/g, '');
 
       if (vin.includes(searchStr) || barcodeVin.includes(searchStr)) {
         if (!lowerPart || rowPart.includes(lowerPart)) {
@@ -324,7 +282,7 @@ function getMasterStats(masterName, part) {
     const branchStatsMap = {};
 
     const targetMaster = String(masterName).trim().toLowerCase();
-    const lowerPart = part ? part.toLowerCase().trim().replace(/\s+/g, '') : ''; // Added .replace(/\s+/g, '')
+    const lowerPart = part ? part.toLowerCase().trim().replace(/\s+/g, '') : '';
 
     for (let i = 4; i < data.length; i++) {
       const row = data[i];
@@ -404,8 +362,8 @@ function saveMemo(vin, memo) {
     const targetVin = String(vin).trim();
 
     for (let i = 4; i < data.length; i++) {
-      if (String(data[i][1]).trim() === targetVin) { // B열 차대번호
-        sheet.getRange(i + 1, 15).setValue(memo); // O열(15) 비고/메모
+      if (String(data[i][1]).trim() === targetVin) {
+        sheet.getRange(i + 1, 15).setValue(memo); // O
         return { success: true, message: '비고가 저장되었습니다.' };
       }
     }
@@ -430,11 +388,10 @@ function markAsComplete(vin, memo, processTypes) {
     for (let i = 4; i < data.length; i++) {
       if (String(data[i][1]).trim() === targetVin) {
         const rowIdx = i + 1;
-        sheet.getRange(rowIdx, 13).setValue('완료');      // M열(13): 완료
-        sheet.getRange(rowIdx, 14).setValue(today);      // N열(14): 완료일
-        sheet.getRange(rowIdx, 15).setValue(memo);       // O열(15): 비고
+        sheet.getRange(rowIdx, 13).setValue('완료');      // M
+        sheet.getRange(rowIdx, 14).setValue(today);      // N
+        sheet.getRange(rowIdx, 15).setValue(memo);       // O
         
-        // 처리 구분 (R~U열)
         if (processTypes) {
           sheet.getRange(rowIdx, 18).setValue(processTypes.inspection ? 'O' : ''); // R
           sheet.getRange(rowIdx, 19).setValue(processTypes.replace ? 'O' : '');    // S
@@ -452,7 +409,7 @@ function markAsComplete(vin, memo, processTypes) {
 }
 
 /**
- * 행 데이터를 객체로 변환 (5행 이후 기준 컬럼 매핑)
+ * 행 데이터를 객체로 변환
  */
 function mapRowToVehicleData(row, rowNum) {
   function fmtDate(v) {
@@ -493,7 +450,6 @@ function normalizeText(value) {
 
 /**
  * 배차 신청용 파트별 영업점 옵션 조회
- * 주소록 시트 구조: A(분류), B(영업점), C(주소)
  */
 function getDeliveryBranchOptionsByPart(part) {
   try {
@@ -508,9 +464,9 @@ function getDeliveryBranchOptionsByPart(part) {
     const items = [];
 
     for (let i = 1; i < data.length; i++) {
-      const rowPart = normalizeText(data[i][0]); // A열: 분류
-      const branch = String(data[i][1] || '').trim(); // B열: 영업점
-      const address = String(data[i][2] || '').trim(); // C열: 주소
+      const rowPart = normalizeText(data[i][0]);
+      const branch = String(data[i][1] || '').trim();
+      const address = String(data[i][2] || '').trim();
 
       if (!branch) continue;
       if (rowPart !== partKey) continue;
@@ -531,13 +487,173 @@ function getDeliveryBranchOptionsByPart(part) {
   }
 }
 
+function formatDeliveryDate(value) {
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, 'GMT+9', 'yyyy-MM-dd');
+  }
+  const text = String(value).trim();
+  const match = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (match) {
+    const y = match[1];
+    const m = match[2].padStart(2, '0');
+    const d = match[3].padStart(2, '0');
+    return y + '-' + m + '-' + d;
+  }
+  return text.substring(0, 10);
+}
+
+function normalizeDeliveryStatus(rawStatus) {
+  const status = normalizeText(rawStatus);
+  if (status === 'approved' || status === '승인' || status === '배차승인') {
+    return '배차승인';
+  }
+  return '배차신청';
+}
+
+/**
+ * 배차 목록 조회
+ */
+function getDeliveryList(filters) {
+  try {
+    const filter = filters || {};
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+    const data = sheet.getDataRange().getValues();
+    const items = [];
+
+    const selectedDate = String(filter.date || '').trim();
+    const searchKey = String(filter.searchKey || 'part').trim();
+    const searchValue = normalizeText(filter.searchValue || '');
+    const statusFilter = String(filter.status || 'ALL').trim();
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const item = {
+        rowNo: i + 1,
+        requesterName: String(row[0] || '').trim(), // A
+        category: String(row[1] || '').trim(), // B
+        categoryCustom: String(row[2] || '').trim(), // C
+        originPart: String(row[3] || '').trim(), // D
+        originBranch: String(row[4] || '').trim(), // E
+        originAddress: String(row[5] || '').trim(), // F
+        originManual: String(row[6] || '').trim(), // G
+        contentsCart: String(row[7] || '').trim(), // H
+        contentsMaterial: String(row[8] || '').trim(), // I
+        destPart: String(row[9] || '').trim(), // J
+        destBranch: String(row[10] || '').trim(), // K
+        destAddress: String(row[11] || '').trim(), // L
+        destManual: String(row[12] || '').trim(), // M
+        preferredDate: formatDeliveryDate(row[13]), // N (배차 신청일/희망일)
+        applyDate: formatDeliveryDate(row[13]), // N
+        approvedDate: formatDeliveryDate(row[14]), // O (배차 승인일)
+        note: String(row[15] || '').trim(), // P (비고)
+        status: '' // Q (배차상태)
+      };
+
+      item.status = normalizeDeliveryStatus(row[16]);
+      item.searchDate = item.approvedDate || item.applyDate;
+
+      if (!item.requesterName && !item.category) continue;
+      if (selectedDate && item.searchDate !== selectedDate) continue;
+      if (statusFilter === 'APPLY' && item.status !== '배차신청') continue;
+      if (statusFilter === 'APPROVED' && item.status !== '배차승인') continue;
+
+      if (searchValue) {
+        let target = '';
+        if (searchKey === 'part') {
+          target = [item.originPart, item.destPart].join(' ');
+        } else if (searchKey === 'origin') {
+          target = [item.originBranch, item.originAddress, item.originManual].join(' ');
+        } else if (searchKey === 'dest') {
+          target = [item.destBranch, item.destAddress, item.destManual].join(' ');
+        } else if (searchKey === 'requester') {
+          target = item.requesterName;
+        }
+        if (!normalizeText(target).includes(searchValue)) continue;
+      }
+
+      items.push(item);
+    }
+
+    items.sort(function (a, b) {
+      const ad = a.searchDate || '';
+      const bd = b.searchDate || '';
+      if (ad === bd) return b.rowNo - a.rowNo;
+      return ad < bd ? 1 : -1;
+    });
+
+    return { success: true, items: items };
+  } catch (e) {
+    return { success: false, message: e.toString(), items: [] };
+  }
+}
+
+/**
+ * 승인 대기/승인 목록 조회
+ */
+function getDeliveryApprovalList(filters) {
+  try {
+    const filter = filters || {};
+    const dateFrom = String(filter.dateFrom || '').trim();
+    const dateTo = String(filter.dateTo || '').trim();
+    const query = normalizeText(filter.query || '');
+    const statusFilter = String(filter.status || 'ALL').trim();
+
+    const res = getDeliveryList({ status: 'ALL' });
+    if (!res || !res.success) {
+      return { success: false, message: '목록 조회 실패', items: [] };
+    }
+
+    const items = (res.items || []).filter(function (item) {
+      const searchDate = String(item.searchDate || '').trim();
+      if (dateFrom && (!searchDate || searchDate < dateFrom)) return false;
+      if (dateTo && (!searchDate || searchDate > dateTo)) return false;
+      if (statusFilter === 'APPLY' && item.status !== '배차신청') return false;
+      if (statusFilter === 'APPROVED' && item.status !== '배차승인') return false;
+
+      if (query) {
+        const target = normalizeText([
+          item.destBranch, item.destAddress, item.destManual, item.requesterName
+        ].join(' '));
+        if (!target.includes(query)) return false;
+      }
+      return true;
+    });
+
+    return { success: true, items: items };
+  } catch (e) {
+    return { success: false, message: e.toString(), items: [] };
+  }
+}
+
+/**
+ * 배차 승인 처리
+ */
+function approveDeliveryRequest(rowNo) {
+  try {
+    const rowIndex = Number(rowNo);
+    if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
+
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+    const today = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd');
+
+    sheet.getRange(rowIndex, 15).setValue(today); // O
+    sheet.getRange(rowIndex, 17).setValue('배차승인'); // Q
+
+    return { success: true, message: '배차 승인 처리되었습니다.', approvedDate: today };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
 /**
  * 배차 신청 저장
- * 저장 위치: 배차 목록 스프레드시트 A~O
  */
 function saveDeliveryApply(payload) {
   try {
-    if (!payload) return { success: false, message: '저장할 데이터가 없습니다.' };
+    if (!payload) return { success: false, message: '데이터가 없습니다.' };
 
     const requesterName = String(payload.requesterName || '').trim();
     const category = String(payload.category || '').trim();
@@ -546,7 +662,8 @@ function saveDeliveryApply(payload) {
     const originBranch = String(payload.originBranch || '').trim();
     const originAddress = String(payload.originAddress || '').trim();
     const originManual = String(payload.originManual || '').trim();
-    const contents = String(payload.contents || '').trim();
+    const contentsCart = String(payload.contentsCart || '').trim();
+    const contentsMaterial = String(payload.contentsMaterial || '').trim();
     const destPart = String(payload.destPart || '').trim();
     const destBranch = String(payload.destBranch || '').trim();
     const destAddress = String(payload.destAddress || '').trim();
@@ -554,33 +671,29 @@ function saveDeliveryApply(payload) {
     const preferredDate = String(payload.preferredDate || '').trim();
     const note = String(payload.note || '').trim();
 
-    if (!requesterName) return { success: false, message: '요청자명이 필요합니다.' };
-    if (!category) return { success: false, message: '분류를 선택해주세요.' };
-    if (category === '직접 입력' && !categoryCustom) return { success: false, message: '분류 직접 입력값이 필요합니다.' };
-    if (!originPart || !originBranch || !originAddress) return { success: false, message: '출발지 정보가 누락되었습니다.' };
-    if (!destPart || !destBranch || !destAddress) return { success: false, message: '목적지 정보가 누락되었습니다.' };
-    if (!preferredDate) return { success: false, message: '배차 희망일을 선택해주세요.' };
+    if (!requesterName || !category || !preferredDate) return { success: false, message: '필수 항목이 누락되었습니다.' };
 
     const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
     const sheet = ss.getSheets()[0];
 
-    // A~O 저장: N열은 현재 규격상 미사용으로 공란 유지
     const row = [
-      requesterName, // A 요청자명
-      category, // B 분류
-      categoryCustom, // C 분류(직접입력)
-      originPart, // D 출발 파트
-      originBranch, // E 출발 영업점
-      originAddress, // F 출발 주소
-      originManual, // G 출발지 변경(수기)
-      contents, // H 내용물
-      destPart, // I 목적 파트
-      destBranch, // J 목적 영업점
-      destAddress, // K 목적 주소
-      destManual, // L 목적지 변경(수기)
-      preferredDate, // M 배차 희망일
-      '', // N 미사용
-      note // O 비고
+      requesterName, // A
+      category, // B
+      categoryCustom, // C
+      originPart, // D
+      originBranch, // E
+      originAddress, // F
+      originManual, // G
+      contentsCart, // H
+      contentsMaterial, // I
+      destPart, // J
+      destBranch, // K
+      destAddress, // L
+      destManual, // M
+      preferredDate, // N
+      '', // O
+      note, // P
+      '배차신청' // Q
     ];
 
     sheet.appendRow(row);
@@ -590,25 +703,18 @@ function saveDeliveryApply(payload) {
   }
 }
 
-/**
- * 바코드를 통해 차대번호 조회 (사용자 요청 명칭 통합)
- */
 function lookupBarcode(barcode) {
   try {
     const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
     const sheet = ss.getSheetByName('차대정보');
-    if (!sheet) return { success: false, message: "'차대정보' 시트를 찾을 수 없습니다." };
-    
+    if (!sheet) return { success: false };
     const data = sheet.getDataRange().getValues();
-    const searchBarcode = String(barcode).trim();
-    
+    const search = String(barcode).trim();
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0]).trim() === searchBarcode) {
-        return { found: true, vin: String(data[i][1]).trim() };
-      }
+      if (String(data[i][0]).trim() === search) return { found: true, vin: String(data[i][1]).trim() };
     }
-    return { found: false, error: "매칭되는 차대번호가 없습니다." };
+    return { found: false };
   } catch (e) {
-    return { found: false, error: e.toString() };
+    return { found: false };
   }
 }

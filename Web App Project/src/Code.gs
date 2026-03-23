@@ -63,6 +63,34 @@ function checkLogin(employeeId, password) {
 }
 
 /**
+ * 비밀번호 변경
+ */
+function updatePassword(employeeId, oldPassword, newPassword) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+    const data = sheet.getDataRange().getValues();
+    
+    // 헤더가 있을 수 있으므로 그대로 순회하며 찾습니다.
+    for (let i = 0; i < data.length; i++) {
+      // A열: 사원번호 (index 0), B열: 비밀번호 (index 1)
+      if (String(data[i][0]) === String(employeeId)) {
+        if (String(data[i][1]) === String(oldPassword)) {
+          // 기존 비밀번호 일치: 새 비밀번호로 업데이트 (i는 0-index이므로 실제 행은 i+1, B열은 2번 열)
+          sheet.getRange(i + 1, 2).setValue(newPassword);
+          return { success: true, message: '비밀번호가 성공적으로 변경되었습니다.' };
+        } else {
+          return { success: false, message: '기존 비밀번호가 일치하지 않습니다.' };
+        }
+      }
+    }
+    return { success: false, message: '존재하지 않는 사원번호입니다.' };
+  } catch (e) {
+    return { success: false, message: '에러 발생: ' + e.toString() };
+  }
+}
+
+/**
  * 비밀번호 변경용 스프레드시트 (위 SPREADSHEET_ID와 동일하게 사용 중)
  */
 const BS_SPREADSHEET_ID = '1uhkhWWBzvleJwKR_D-VAWXNWq7O3JwB4fib7vKZ52iY';

@@ -96,6 +96,35 @@ function updatePassword(employeeId, oldPassword, newPassword) {
 const BS_SPREADSHEET_ID = '1uhkhWWBzvleJwKR_D-VAWXNWq7O3JwB4fib7vKZ52iY';
 const BRANCH_ADDRESS_SPREADSHEET_ID = '10vY7bq8AXW3XkimW-ibyOGh4LaWRCLaR1Df69Iy9Lt0';
 const DELIVERY_SPREADSHEET_ID = '1IiUSZmNSG8PCZJtyNPNqE1ZXByRIpHJSOeuX6X9H3qc';
+const BS_SERVICE_SHEETS = ['서비스1', '서비스2', '서비스3', '서비스4'];
+
+/**
+ * BS 시트 데이터 로딩 헬퍼
+ * part가 '서비스1'~'서비스4' → 해당 시트만 로딩
+ * part가 빈 문자열/null → 전체(서비스1~4) 통합
+ * 반환: [{ sheetName, data(2d array) }, ...]
+ */
+function getBsSheetData(part) {
+  const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
+  const targetSheets = [];
+
+  if (part && BS_SERVICE_SHEETS.indexOf(part) !== -1) {
+    targetSheets.push(part);
+  } else {
+    // 전체: 서비스1~4 모두
+    BS_SERVICE_SHEETS.forEach(function(name) { targetSheets.push(name); });
+  }
+
+  const result = [];
+  targetSheets.forEach(function(name) {
+    const sheet = ss.getSheetByName(name);
+    if (sheet) {
+      const data = sheet.getDataRange().getValues();
+      result.push({ sheetName: name, data: data });
+    }
+  });
+  return result;
+}
 
 
 /**
@@ -107,24 +136,18 @@ function searchBranchAddress(keyword, part) {
     const addressSheet = addressSs.getSheets()[0];
     const addressData = addressSheet.getDataRange().getValues();
     
-    // 차대정보가 있는 BS 시트 접근
-    const bsSs = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
-    const bsSheet = bsSs.getSheets()[0];
-    const bsData = bsSheet.getDataRange().getValues();
+    // 시트명 기반 BS 데이터 로딩
+    const bsSheets = getBsSheetData(part);
 
     const results = [];
-    const searchKeyword = String(keyword || '').trim().toLowerCase().replace(/\s+/g, ''); // 검색어 공백 제거
+    const searchKeyword = String(keyword || '').trim().toLowerCase().replace(/\s+/g, '');
     const searchPart = String(part || '').trim().toLowerCase();
 
-    // 데이터는 2행(index 1)부터 시작한다고 가정
     for (let i = 1; i < addressData.length; i++) {
-        // 주소록 시트 구조 (A:분류, B:영업점, C:주소지, D:영업점 번호, E:점장번호)
         const rowPart = String(addressData[i][0] || '').trim().toLowerCase(); 
-        const rowBranch = String(addressData[i][1] || '').trim().toLowerCase().replace(/\s+/g, ''); // 영업점명 공백 제거
+        const rowBranch = String(addressData[i][1] || '').trim().toLowerCase().replace(/\s+/g, '');
         
-        // 검색어 매칭 (영업점명 부분 일치)
-        if (rowBranch.includes(searchKeyword)) { // 검색어에서도 공백 제거
-          // 권한별 파트 매칭 ('전체'일 경우 searchPart가 빈 문자열이므로 통과됨)
+        if (rowBranch.includes(searchKeyword)) {
           if (!searchPart || rowPart.includes(searchPart)) {
             
             const branchInfo = {
@@ -140,64 +163,48 @@ function searchBranchAddress(keyword, part) {
                   bsCompleted: 0,
                   reworkTotal: 0,
                   reworkCompleted: 0,
-                  bsList: [],     // 미완료된 일반 BS
-                  bsDoneList: [], // 완료된 일반 BS
-                  reworkList: [], // 미완료된 리워크
-                  reworkDoneList: []// 완료된 리워크
+                  bsList: [],
+                  bsDoneList: [],
+                  reworkList: [],
+                  reworkDoneList: []
               }
             };
 
-            // 검색된 영업점의 BS/리워크 현황 매칭
-            // BS 시트는 5행(index 4)부터 데이터 시작
-            for (let j = 4; j < bsData.length; j++) {
-              const bsRowBranch = String(bsData[j][4] || '').trim().toLowerCase(); // E열: 영업점
-              
-              // 영업점 이름이 일치하는 경우
-              if (bsRowBranch === branchInfo.name.toLowerCase()) {
-                const vin = String(bsData[j][1] || '').trim(); // B열: 차대번호
-                const type = String(bsData[j][9] || ''); // J열: BS점검대상
-                const isCompleted = String(bsData[j][12] || '').trim() !== ''; // M열: 완료 여부
-                const bsRowPart = String(bsData[j][10] || '').toLowerCase(); // K열: 부품/파트
+            // 매칭된 시트들에서 영업점 BS/리워크 현황 집계
+            bsSheets.forEach(function(sheetObj) {
+              const bsData = sheetObj.data;
+              for (let j = 4; j < bsData.length; j++) {
+                const bsRowBranch = String(bsData[j][4] || '').trim().toLowerCase();
+                
+                if (bsRowBranch === branchInfo.name.toLowerCase()) {
+                  const vin = String(bsData[j][1] || '').trim();
+                  const type = String(bsData[j][9] || '');
+                  const isCompleted = String(bsData[j][12] || '').trim() !== '';
+                  const vehicleItem = { vin: vin, completed: isCompleted, cartVersion: String(bsData[j][0] || '') };
 
-                // 1. 현재 사용자의 권한 필터(searchPart) 공백 제거 검증
-                // 2. 해당 주소록 카드의 분류(branchInfo.part)와 공백 제거 교차 검증
-                const cleanCardPart = branchInfo.part.toLowerCase().replace(/\s+/g, '');
-                const cleanBsRowPart = bsRowPart.replace(/\s+/g, '');
-                const cleanSearchPart = searchPart.replace(/\s+/g, '');
-
-                const isGlobalMatched = !cleanSearchPart || cleanBsRowPart.includes(cleanSearchPart);
-                const isCardMatched = !cleanCardPart || !cleanBsRowPart || cleanBsRowPart.includes(cleanCardPart) || cleanCardPart.includes(cleanBsRowPart);
-
-                if (isGlobalMatched && isCardMatched) {
-                    // 목록 표시에 필요한 데이터: 차대번호와 차종(필요시 추가)
-                    const vehicleItem = { vin: vin, completed: isCompleted, cartVersion: String(bsData[j][0] || '') };
-
-                    if (type.includes('리워크')) {
-                        branchInfo.stats.reworkTotal++;
-                        if (isCompleted) {
-                          branchInfo.stats.reworkCompleted++;
-                          branchInfo.stats.reworkDoneList.push(vehicleItem);
-                        } else {
-                          branchInfo.stats.reworkList.push(vehicleItem);
-                        }
-                    } else if (type === 'O' || type === 'o') {
-                        branchInfo.stats.bsTotal++;
-                        if (isCompleted) {
-                          branchInfo.stats.bsCompleted++;
-                          branchInfo.stats.bsDoneList.push(vehicleItem);
-                        } else {
-                          branchInfo.stats.bsList.push(vehicleItem);
-                        }
-                    }
+                  if (type.includes('리워크')) {
+                      branchInfo.stats.reworkTotal++;
+                      if (isCompleted) {
+                        branchInfo.stats.reworkCompleted++;
+                        branchInfo.stats.reworkDoneList.push(vehicleItem);
+                      } else {
+                        branchInfo.stats.reworkList.push(vehicleItem);
+                      }
+                  } else if (type === 'O' || type === 'o') {
+                      branchInfo.stats.bsTotal++;
+                      if (isCompleted) {
+                        branchInfo.stats.bsCompleted++;
+                        branchInfo.stats.bsDoneList.push(vehicleItem);
+                      } else {
+                        branchInfo.stats.bsList.push(vehicleItem);
+                      }
+                  }
                 }
               }
-            }
+            });
 
-            // 명시적으로 BS와 리워크의 합을 전체 모수로 설정
             branchInfo.stats.totalTarget = branchInfo.stats.bsTotal + branchInfo.stats.reworkTotal;
             branchInfo.stats.completedTarget = branchInfo.stats.bsCompleted + branchInfo.stats.reworkCompleted;
-            
-            // 계산된 진행률 추가
             branchInfo.stats.completionRate = branchInfo.stats.totalTarget > 0 ? Math.round((branchInfo.stats.completedTarget / branchInfo.stats.totalTarget) * 100) : 0;
             branchInfo.stats.bsRate = branchInfo.stats.bsTotal > 0 ? Math.round((branchInfo.stats.bsCompleted / branchInfo.stats.bsTotal) * 100) : 0;
             branchInfo.stats.reworkRate = branchInfo.stats.reworkTotal > 0 ? Math.round((branchInfo.stats.reworkCompleted / branchInfo.stats.reworkTotal) * 100) : 0;
@@ -214,79 +221,76 @@ function searchBranchAddress(keyword, part) {
 }
 
 /**
- * 영업점별 통계 계산 헬퍼
+ * 영업점별 통계 계산 헬퍼 (시트명 기반)
+ * allDataSets: getBsSheetData()의 반환값 [{ sheetName, data }, ...]
  */
-function calculateBranchStats(targetBranchName, allData, part) {
-  let total = 0, completed = 0;
+function calculateBranchStats(targetBranchName, allDataSets) {
   let regularTotal = 0, regularCompleted = 0;
   let reworkTotal = 0, reworkCompleted = 0;
   
-  const lowerPart = part ? part.toLowerCase().trim().replace(/\s+/g, '') : '';
   const cleanTargetBranch = targetBranchName ? targetBranchName.toLowerCase().replace(/\s+/g, '') : '';
 
-  for (let i = 4; i < allData.length; i++) {
-    const row = allData[i];
-    const rowBranch = String(row[4] || '').toLowerCase().trim().replace(/\s+/g, ''); // E열: 영업점
-    const rowPart = String(row[10] || '').toLowerCase().replace(/\s+/g, ''); // K열: 부품
-    
-    if (rowBranch === cleanTargetBranch && (!lowerPart || rowPart.includes(lowerPart))) {
-      const isCompleted = String(row[12] || '').trim() !== ''; // M열: 완료
-      const type = String(row[9] || ''); // J열: BS점검대상
+  allDataSets.forEach(function(sheetObj) {
+    const data = sheetObj.data;
+    for (let i = 4; i < data.length; i++) {
+      const row = data[i];
+      const rowBranch = String(row[4] || '').toLowerCase().trim().replace(/\s+/g, '');
       
-      if (type.includes('리워크')) {
-        reworkTotal++;
-        if (isCompleted) reworkCompleted++;
-      } else if (type === 'O') {
-        regularTotal++;
-        if (isCompleted) regularCompleted++;
+      if (rowBranch === cleanTargetBranch) {
+        const isCompleted = String(row[12] || '').trim() !== '';
+        const type = String(row[9] || '');
+        
+        if (type.includes('리워크')) {
+          reworkTotal++;
+          if (isCompleted) reworkCompleted++;
+        } else if (type === 'O' || type === 'o') {
+          regularTotal++;
+          if (isCompleted) regularCompleted++;
+        }
       }
     }
-  }
+  });
   
-  total = regularTotal + reworkTotal;
-  completed = regularCompleted + reworkCompleted;
+  const total = regularTotal + reworkTotal;
+  const completed = regularCompleted + reworkCompleted;
   
   return {
     name: targetBranchName,
-    total, completed,
+    total: total, completed: completed,
     rate: total ? Math.round((completed / total) * 100) : 0,
-    regularTotal, regularCompleted,
+    regularTotal: regularTotal, regularCompleted: regularCompleted,
     regularRate: regularTotal ? Math.round((regularCompleted / regularTotal) * 100) : 0,
-    reworkTotal, reworkCompleted,
+    reworkTotal: reworkTotal, reworkCompleted: reworkCompleted,
     reworkRate: reworkTotal ? Math.round((reworkCompleted / reworkTotal) * 100) : 0
   };
 }
 
 /**
- * BS 및 리워크 검색
+ * BS 및 리워크 검색 (시트명 기반)
  */
 function searchBS(keyword, part) {
   try {
-    const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
-    const sheet = ss.getSheets()[0];
-    const data = sheet.getDataRange().getValues();
-    const results = [];
-    
     if (!keyword) return [];
 
+    const bsSheets = getBsSheetData(part);
+    const results = [];
     const searchStr = String(keyword).trim().toUpperCase();
-    const lowerPart = part ? part.toLowerCase().trim().replace(/\s+/g, '') : '';
 
-    for (let i = 4; i < data.length; i++) {
-      const row = data[i];
-      const vin = String(row[1] || '').trim().toUpperCase();
-      const barcodeVin = String(row[21] || '').trim().toUpperCase();
-      const rowPart = String(row[10] || '').toLowerCase().replace(/\s+/g, '');
+    bsSheets.forEach(function(sheetObj) {
+      const data = sheetObj.data;
+      for (let i = 4; i < data.length; i++) {
+        const row = data[i];
+        const vin = String(row[1] || '').trim().toUpperCase();
+        const barcodeVin = String(row[21] || '').trim().toUpperCase();
 
-      if (vin.includes(searchStr) || barcodeVin.includes(searchStr)) {
-        if (!lowerPart || rowPart.includes(lowerPart)) {
+        if (vin.includes(searchStr) || barcodeVin.includes(searchStr)) {
           const vehicle = mapRowToVehicleData(row, i + 1);
-          // 단일 검색 결과일 경우 해당 영업점 통계 추가 (UI 요약용)
-          vehicle.branchSummary = calculateBranchStats(vehicle.salesPoint, data, part);
+          vehicle.sourceSheet = sheetObj.sheetName; // 어느 시트에서 찾았는지 기록
+          vehicle.branchSummary = calculateBranchStats(vehicle.salesPoint, bsSheets);
           results.push(vehicle);
         }
       }
-    }
+    });
     
     return results.slice(0, 30);
   } catch (e) {
@@ -296,62 +300,60 @@ function searchBS(keyword, part) {
 }
 
 /**
- * 마스터 통계 조회
+ * 마스터 통계 조회 (시트명 기반)
  */
 function getMasterStats(masterName, part) {
   try {
-    const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
-    const sheet = ss.getSheets()[0];
-    const data = sheet.getDataRange().getValues();
+    const bsSheets = getBsSheetData(part);
     
-    let total = 0, completed = 0;
     let regularTotal = 0, regularCompleted = 0;
     let reworkTotal = 0, reworkCompleted = 0;
     const branchStatsMap = {};
 
     const targetMaster = String(masterName).trim().toLowerCase();
-    const lowerPart = part ? part.toLowerCase().trim().replace(/\s+/g, '') : '';
 
-    for (let i = 4; i < data.length; i++) {
-      const row = data[i];
-      const rowMaster = String(row[11] || '').trim().toLowerCase(); // L열: 마스터
-      const rowPart = String(row[10] || '').toLowerCase().replace(/\s+/g, ''); // K열: 부품
-      
-      if (rowMaster === targetMaster && (!lowerPart || rowPart.includes(lowerPart))) {
-        const isCompleted = String(row[12] || '').trim() !== '';
-        const type = String(row[9] || '');
-        const dispBranchName = String(row[4] || '기타');
-        const cleanBranchName = String(row[4] || '기타').toLowerCase().replace(/\s+/g, '');
-
-        if (type.includes('리워크')) {
-          reworkTotal++;
-          if (isCompleted) reworkCompleted++;
-        } else if (type === 'O') {
-          regularTotal++;
-          if (isCompleted) regularCompleted++;
-        }
-
-        if (!branchStatsMap[cleanBranchName]) {
-          branchStatsMap[cleanBranchName] = { 
-            name: dispBranchName, total: 0, completed: 0, 
-            regularTotal: 0, regularCompleted: 0, 
-            reworkTotal: 0, reworkCompleted: 0 
-          };
-        }
-        const b = branchStatsMap[cleanBranchName];
+    bsSheets.forEach(function(sheetObj) {
+      const data = sheetObj.data;
+      for (let i = 4; i < data.length; i++) {
+        const row = data[i];
+        const rowMaster = String(row[11] || '').trim().toLowerCase();
         
-        if (type.includes('리워크')) {
-          b.reworkTotal++;
-          if (isCompleted) b.reworkCompleted++;
-        } else if (type === 'O') {
-          b.regularTotal++;
-          if (isCompleted) b.regularCompleted++;
+        if (rowMaster === targetMaster) {
+          const isCompleted = String(row[12] || '').trim() !== '';
+          const type = String(row[9] || '');
+          const dispBranchName = String(row[4] || '기타');
+          const cleanBranchName = String(row[4] || '기타').toLowerCase().replace(/\s+/g, '');
+
+          if (type.includes('리워크')) {
+            reworkTotal++;
+            if (isCompleted) reworkCompleted++;
+          } else if (type === 'O' || type === 'o') {
+            regularTotal++;
+            if (isCompleted) regularCompleted++;
+          }
+
+          if (!branchStatsMap[cleanBranchName]) {
+            branchStatsMap[cleanBranchName] = { 
+              name: dispBranchName, total: 0, completed: 0, 
+              regularTotal: 0, regularCompleted: 0, 
+              reworkTotal: 0, reworkCompleted: 0 
+            };
+          }
+          const b = branchStatsMap[cleanBranchName];
+          
+          if (type.includes('리워크')) {
+            b.reworkTotal++;
+            if (isCompleted) b.reworkCompleted++;
+          } else if (type === 'O' || type === 'o') {
+            b.regularTotal++;
+            if (isCompleted) b.regularCompleted++;
+          }
         }
       }
-    }
+    });
     
-    total = regularTotal + reworkTotal;
-    completed = regularCompleted + reworkCompleted;
+    const total = regularTotal + reworkTotal;
+    const completed = regularCompleted + reworkCompleted;
 
     const branchStats = Object.values(branchStatsMap).map(b => {
       b.total = b.regularTotal + b.reworkTotal;
@@ -365,13 +367,13 @@ function getMasterStats(masterName, part) {
     }).sort((a, b) => b.rate - a.rate);
 
     return {
-      total, completed,
+      total: total, completed: completed,
       completionRate: total ? Math.round((completed / total) * 100) : 0,
-      regularTotal, regularCompleted,
+      regularTotal: regularTotal, regularCompleted: regularCompleted,
       regularCompletionRate: regularTotal ? Math.round((regularCompleted / regularTotal) * 100) : 0,
-      reworkTotal, reworkCompleted,
+      reworkTotal: reworkTotal, reworkCompleted: reworkCompleted,
       reworkCompletionRate: reworkTotal ? Math.round((reworkCompleted / reworkTotal) * 100) : 0,
-      branchStats
+      branchStats: branchStats
     };
   } catch (e) {
     return { error: e.toString() };
@@ -379,20 +381,22 @@ function getMasterStats(masterName, part) {
 }
 
 /**
- * 메모 저장
+ * 메모 저장 (시트명 기반 - 전체 시트 검색)
  */
 function saveMemo(vin, memo) {
   try {
     const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
-    const sheet = ss.getSheets()[0];
-    const data = sheet.getDataRange().getValues();
-    
     const targetVin = String(vin).trim();
 
-    for (let i = 4; i < data.length; i++) {
-      if (String(data[i][1]).trim() === targetVin) {
-        sheet.getRange(i + 1, 15).setValue(memo); // O
-        return { success: true, message: '비고가 저장되었습니다.' };
+    for (let s = 0; s < BS_SERVICE_SHEETS.length; s++) {
+      const sheet = ss.getSheetByName(BS_SERVICE_SHEETS[s]);
+      if (!sheet) continue;
+      const data = sheet.getDataRange().getValues();
+      for (let i = 4; i < data.length; i++) {
+        if (String(data[i][1]).trim() === targetVin) {
+          sheet.getRange(i + 1, 15).setValue(memo); // O
+          return { success: true, message: '비고가 저장되었습니다.' };
+        }
       }
     }
     return { success: false, message: '해당 차대번호를 찾을 수 없습니다.' };
@@ -402,32 +406,34 @@ function saveMemo(vin, memo) {
 }
 
 /**
- * 점검 완료 처리
+ * 점검 완료 처리 (시트명 기반 - 전체 시트 검색)
  */
 function markAsComplete(vin, memo, processTypes) {
   try {
     const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
-    const sheet = ss.getSheets()[0];
-    const data = sheet.getDataRange().getValues();
     const today = Utilities.formatDate(new Date(), "GMT+9", "yyyy-MM-dd");
-    
     const targetVin = String(vin).trim();
 
-    for (let i = 4; i < data.length; i++) {
-      if (String(data[i][1]).trim() === targetVin) {
-        const rowIdx = i + 1;
-        sheet.getRange(rowIdx, 13).setValue('완료');      // M
-        sheet.getRange(rowIdx, 14).setValue(today);      // N
-        sheet.getRange(rowIdx, 15).setValue(memo);       // O
-        
-        if (processTypes) {
-          sheet.getRange(rowIdx, 18).setValue(processTypes.inspection ? 'O' : ''); // R
-          sheet.getRange(rowIdx, 19).setValue(processTypes.replace ? 'O' : '');    // S
-          sheet.getRange(rowIdx, 20).setValue(processTypes.transfer ? 'O' : '');   // T
-          sheet.getRange(rowIdx, 21).setValue(processTypes.disposal ? 'O' : '');   // U
+    for (let s = 0; s < BS_SERVICE_SHEETS.length; s++) {
+      const sheet = ss.getSheetByName(BS_SERVICE_SHEETS[s]);
+      if (!sheet) continue;
+      const data = sheet.getDataRange().getValues();
+      for (let i = 4; i < data.length; i++) {
+        if (String(data[i][1]).trim() === targetVin) {
+          const rowIdx = i + 1;
+          sheet.getRange(rowIdx, 13).setValue('완료');      // M
+          sheet.getRange(rowIdx, 14).setValue(today);      // N
+          sheet.getRange(rowIdx, 15).setValue(memo);       // O
+          
+          if (processTypes) {
+            sheet.getRange(rowIdx, 18).setValue(processTypes.inspection ? 'O' : ''); // R
+            sheet.getRange(rowIdx, 19).setValue(processTypes.replace ? 'O' : '');    // S
+            sheet.getRange(rowIdx, 20).setValue(processTypes.transfer ? 'O' : '');   // T
+            sheet.getRange(rowIdx, 21).setValue(processTypes.disposal ? 'O' : '');   // U
+          }
+          
+          return { success: true, message: '점검 완료 처리되었습니다.' };
         }
-        
-        return { success: true, message: '점검 완료 처리되었습니다.' };
       }
     }
     return { success: false, message: '해당 차대번호를 찾을 수 없습니다.' };

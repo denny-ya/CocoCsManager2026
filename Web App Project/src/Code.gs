@@ -37,20 +37,27 @@ function checkLogin(employeeId, password) {
       // A열: 사원번호, B열: 비밀번호
       if (String(data[i][0]) === String(employeeId) && String(data[i][1]) === String(password)) {
         const userName = data[i][2] || '사용자'; // C열: 이름
+        const userPhone = String(data[i][3] || '').trim(); // D열: 연락처
         
-        // D~N열: 모든 메뉴 권한 정보
+        // E~Q열: 모든 메뉴 권한 정보 (D열 연락처 추가로 +1 이동)
         const fullPermissions = {
-          bs: [data[i][3], data[i][4], data[i][5], data[i][6]], // D~G (서비스1~4)
-          address: data[i][7], // H
-          parts: data[i][8],   // I
-          delivery: [data[i][9], data[i][10], data[i][11]], // J~L
-          stats: data[i][12],  // M
-          guide: data[i][13]   // N
+          bs: [data[i][4], data[i][5], data[i][6], data[i][7]], // E~H (서비스1~4)
+          address: data[i][8], // I
+          parts: data[i][9],   // J
+          delivery: [data[i][10], data[i][11], data[i][12]], // K~M
+          stats: data[i][13],  // N
+          guide: data[i][14],  // O
+          driver: {            // P~Q
+            pickup: data[i][15],   // P: 기사 회수
+            delivery: data[i][16]  // Q: 기사 배송
+          }
         };
         
         return { 
           success: true, 
           message: '로그인 성공', 
+          employeeId: String(data[i][0] || '').trim(),
+          userPhone: userPhone,
           userName: userName, 
           permissions: fullPermissions 
         };
@@ -537,12 +544,85 @@ function formatDeliveryDate(value) {
   return text.substring(0, 10);
 }
 
+function formatDeliveryDateTime(value) {
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, 'GMT+9', 'yyyy-MM-dd HH:mm');
+  }
+  const text = String(value).trim();
+  const ymdhm = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\s+(\d{1,2}):(\d{1,2})/);
+  if (ymdhm) {
+    const y = ymdhm[1];
+    const m = ymdhm[2].padStart(2, '0');
+    const d = ymdhm[3].padStart(2, '0');
+    const hh = ymdhm[4].padStart(2, '0');
+    const mm = ymdhm[5].padStart(2, '0');
+    return y + '-' + m + '-' + d + ' ' + hh + ':' + mm;
+  }
+  return formatDeliveryDate(value);
+}
+
+function getDateOnly(value) {
+  return formatDeliveryDate(value);
+}
+
 function normalizeDeliveryStatus(rawStatus) {
   const status = normalizeText(rawStatus);
+  if (status === 'cancel' || status === 'canceled' || status === 'cancelled' || status === '배차취소' || status === '취소') {
+    return '배차취소';
+  }
   if (status === 'approved' || status === '승인' || status === '배차승인') {
     return '배차승인';
   }
+  if (status === 'moving' || status === '이동중' || status === '이동 중') {
+    return '이동 중';
+  }
+  if (status === 'completed' || status === '배송완료' || status === '배송 완료') {
+    return '배송완료';
+  }
   return '배차신청';
+}
+
+function getBranchContactLookup() {
+  const byBranch = {};
+  const ss = SpreadsheetApp.openById(BRANCH_ADDRESS_SPREADSHEET_ID);
+  const sheet = ss.getSheets()[0];
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    const branchName = String(data[i][1] || '').trim(); // B: 영업점
+    if (!branchName) continue;
+    const key = normalizeText(branchName);
+    if (!byBranch[key]) {
+      byBranch[key] = {
+        tel: String(data[i][3] || '').trim(), // D: 영업점 번호
+        managerTel: String(data[i][4] || '').trim() // E: 점장 번호
+      };
+    }
+  }
+
+  return byBranch;
+}
+
+function getLoginUserLookup() {
+  const byName = {};
+  const byEmpId = {};
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheets()[0];
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    const empId = String(data[i][0] || '').trim(); // A
+    const name = String(data[i][2] || '').trim(); // C
+    const phone = String(data[i][3] || '').trim(); // D
+    if (empId && !byEmpId[empId]) {
+      byEmpId[empId] = { name: name, phone: phone };
+    }
+    if (name && !byName[name]) {
+      byName[name] = { empId: empId, phone: phone };
+    }
+  }
+  return { byName: byName, byEmpId: byEmpId };
 }
 
 /**
@@ -560,6 +640,9 @@ function getDeliveryList(filters) {
     const searchKey = String(filter.searchKey || 'part').trim();
     const searchValue = normalizeText(filter.searchValue || '');
     const statusFilter = String(filter.status || 'ALL').trim();
+
+    const loginLookup = getLoginUserLookup();
+    const branchContactLookup = getBranchContactLookup();
 
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
@@ -582,16 +665,59 @@ function getDeliveryList(filters) {
         applyDate: formatDeliveryDate(row[13]), // N
         approvedDate: formatDeliveryDate(row[14]), // O (배차 승인일)
         note: String(row[15] || '').trim(), // P (비고)
-        status: '' // Q (배차상태)
+        status: '', // Q (배차상태)
+        pickupEmpName: String(row[17] || '').trim(), // R (담당기사명 또는 사번)
+        pickupAt: formatDeliveryDateTime(row[18]), // S (회수일시)
+        deliveryCompletedAt: formatDeliveryDateTime(row[19]), // T (배송완료일시)
+        driverPhone: '', // 로그인 계정 목록 D열(연락처) 매핑
+        originTel: '', // 주소록 D열(영업점 번호)
+        originManagerTel: '', // 주소록 E열(점장 번호)
+        destTel: '', // 주소록 D열(영업점 번호)
+        destManagerTel: '' // 주소록 E열(점장 번호)
       };
+      const driverKey = String(item.pickupEmpName || '').trim();
+      if (driverKey) {
+        const byEmp = loginLookup.byEmpId[driverKey];
+        if (byEmp) {
+          item.pickupEmpName = byEmp.name || driverKey;
+          item.driverPhone = byEmp.phone || '';
+        } else {
+          const byName = loginLookup.byName[driverKey];
+          if (byName) {
+            item.driverPhone = byName.phone || '';
+          }
+        }
+      }
+
+      const originKey = normalizeText(item.originBranch);
+      if (originKey && branchContactLookup[originKey]) {
+        item.originTel = branchContactLookup[originKey].tel || '';
+        item.originManagerTel = branchContactLookup[originKey].managerTel || '';
+      }
+
+      const destKey = normalizeText(item.destBranch);
+      if (destKey && branchContactLookup[destKey]) {
+        item.destTel = branchContactLookup[destKey].tel || '';
+        item.destManagerTel = branchContactLookup[destKey].managerTel || '';
+      }
 
       item.status = normalizeDeliveryStatus(row[16]);
-      item.searchDate = item.approvedDate || item.applyDate;
+      if (item.status === '이동 중') {
+        item.searchDate = item.pickupAt || item.approvedDate || item.applyDate;
+      } else if (item.status === '배송완료') {
+        item.searchDate = item.deliveryCompletedAt || item.pickupAt || item.approvedDate || item.applyDate;
+      } else {
+        item.searchDate = item.approvedDate || item.applyDate;
+      }
 
       if (!item.requesterName && !item.category) continue;
-      if (selectedDate && item.searchDate !== selectedDate) continue;
+      if (selectedDate && getDateOnly(item.searchDate) !== selectedDate) continue;
+      if (statusFilter === 'ALL' && item.status === '배차취소') continue;
       if (statusFilter === 'APPLY' && item.status !== '배차신청') continue;
       if (statusFilter === 'APPROVED' && item.status !== '배차승인') continue;
+      if (statusFilter === 'MOVING' && item.status !== '이동 중') continue;
+      if (statusFilter === 'DONE' && item.status !== '배송완료') continue;
+      if (statusFilter === 'CANCEL' && item.status !== '배차취소') continue;
 
       if (searchValue) {
         let target = '';
@@ -632,7 +758,6 @@ function getDeliveryApprovalList(filters) {
     const dateFrom = String(filter.dateFrom || '').trim();
     const dateTo = String(filter.dateTo || '').trim();
     const query = normalizeText(filter.query || '');
-    const statusFilter = String(filter.status || 'ALL').trim();
 
     const res = getDeliveryList({ status: 'ALL' });
     if (!res || !res.success) {
@@ -640,11 +765,10 @@ function getDeliveryApprovalList(filters) {
     }
 
     const items = (res.items || []).filter(function (item) {
-      const searchDate = String(item.searchDate || '').trim();
+      if (item.status !== '배차신청') return false;
+      const searchDate = getDateOnly(item.searchDate);
       if (dateFrom && (!searchDate || searchDate < dateFrom)) return false;
       if (dateTo && (!searchDate || searchDate > dateTo)) return false;
-      if (statusFilter === 'APPLY' && item.status !== '배차신청') return false;
-      if (statusFilter === 'APPROVED' && item.status !== '배차승인') return false;
 
       if (query) {
         const target = normalizeText([
@@ -658,6 +782,124 @@ function getDeliveryApprovalList(filters) {
     return { success: true, items: items };
   } catch (e) {
     return { success: false, message: e.toString(), items: [] };
+  }
+}
+
+/**
+ * 기사 회수 탭 조회
+ * 조건: 배차승인 상태
+ */
+function getDriverPickupList(filters) {
+  try {
+    const filter = filters || {};
+    const dateFrom = String(filter.dateFrom || '').trim();
+    const dateTo = String(filter.dateTo || '').trim();
+    const res = getDeliveryList({ status: 'APPROVED' });
+    if (!res || !res.success) return { success: false, message: '회수 목록 조회 실패', items: [] };
+
+    const items = (res.items || []).filter(function (item) {
+      if (item.status !== '배차승인') return false;
+      const targetDate = getDateOnly(item.searchDate);
+      if (dateFrom && (!targetDate || targetDate < dateFrom)) return false;
+      if (dateTo && (!targetDate || targetDate > dateTo)) return false;
+      return true;
+    });
+
+    return { success: true, items: items };
+  } catch (e) {
+    return { success: false, message: e.toString(), items: [] };
+  }
+}
+
+/**
+ * 기사 배송관리 탭 조회
+ * 조건: 이동 중 + 본인이 회수 처리한 건
+ */
+function getDriverDeliveryList(filters) {
+  try {
+    const filter = filters || {};
+    const dateFrom = String(filter.dateFrom || '').trim();
+    const dateTo = String(filter.dateTo || '').trim();
+    const empName = String(filter.employeeName || '').trim();
+    if (!empName) return { success: false, message: '기사 계정 정보가 없습니다.', items: [] };
+
+    const res = getDeliveryList({ status: 'MOVING' });
+    if (!res || !res.success) return { success: false, message: '배송 목록 조회 실패', items: [] };
+
+    const items = (res.items || []).filter(function (item) {
+      if (item.status !== '이동 중') return false;
+      if (String(item.pickupEmpName || '').trim() !== empName) return false;
+      const pickupDate = getDateOnly(item.pickupAt);
+      if (dateFrom && (!pickupDate || pickupDate < dateFrom)) return false;
+      if (dateTo && (!pickupDate || pickupDate > dateTo)) return false;
+      return true;
+    });
+
+    return { success: true, items: items };
+  } catch (e) {
+    return { success: false, message: e.toString(), items: [] };
+  }
+}
+
+/**
+ * 기사 회수 처리
+ * 배차승인 -> 이동 중
+ */
+function markDeliveryInTransit(rowNo, employeeId, employeeName) {
+  try {
+    const rowIndex = Number(rowNo);
+    const empName = String(employeeName || '').trim();
+    if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
+    if (!empName) return { success: false, message: '기사 계정 정보가 없습니다.' };
+
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+    const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
+    if (currentStatus !== '배차승인') {
+      return { success: false, message: '배차승인 상태에서만 회수 처리할 수 있습니다.' };
+    }
+
+    const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
+    sheet.getRange(rowIndex, 17).setValue('이동 중'); // Q
+    sheet.getRange(rowIndex, 18).setValue(empName); // R
+    sheet.getRange(rowIndex, 19).setValue(now); // S
+
+    return { success: true, message: '회수 처리되었습니다.', status: '이동 중', pickupAt: now };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * 기사 배송완료 처리
+ * 이동 중 -> 배송완료
+ */
+function markDeliveryCompleted(rowNo, employeeName) {
+  try {
+    const rowIndex = Number(rowNo);
+    const empName = String(employeeName || '').trim();
+    if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
+    if (!empName) return { success: false, message: '기사 계정 정보가 없습니다.' };
+
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+    const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
+    if (currentStatus !== '이동 중') {
+      return { success: false, message: '이동 중 상태에서만 배송완료 처리할 수 있습니다.' };
+    }
+
+    const pickupEmpName = String(sheet.getRange(rowIndex, 18).getValue() || '').trim(); // R
+    if (pickupEmpName && pickupEmpName !== empName) {
+      return { success: false, message: '본인이 회수한 항목만 배송완료 처리할 수 있습니다.' };
+    }
+
+    const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
+    sheet.getRange(rowIndex, 17).setValue('배송완료'); // Q
+    sheet.getRange(rowIndex, 20).setValue(now); // T
+
+    return { success: true, message: '배송완료 처리되었습니다.', status: '배송완료', completedAt: now };
+  } catch (e) {
+    return { success: false, message: e.toString() };
   }
 }
 
@@ -677,6 +919,29 @@ function approveDeliveryRequest(rowNo) {
     sheet.getRange(rowIndex, 17).setValue('배차승인'); // Q
 
     return { success: true, message: '배차 승인 처리되었습니다.', approvedDate: today };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * 배차 취소 처리
+ * 배차신청 -> 배차취소
+ */
+function cancelDeliveryRequest(rowNo) {
+  try {
+    const rowIndex = Number(rowNo);
+    if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
+
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+    const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
+    if (currentStatus !== '배차신청') {
+      return { success: false, message: '배차신청 상태에서만 취소할 수 있습니다.' };
+    }
+
+    sheet.getRange(rowIndex, 17).setValue('배차취소'); // Q
+    return { success: true, message: '배차 취소 처리되었습니다.', status: '배차취소' };
   } catch (e) {
     return { success: false, message: e.toString() };
   }
@@ -727,7 +992,10 @@ function saveDeliveryApply(payload) {
       preferredDate, // N
       '', // O
       note, // P
-      '배차신청' // Q
+      '배차신청', // Q
+      '', // R 담당기사명
+      '', // S 회수일자
+      '' // T 배송완료일자
     ];
 
     sheet.appendRow(row);

@@ -136,7 +136,12 @@
         if (item.id === 'bs') {
           hasAccess = userPermissions.bs && userPermissions.bs.some(p => p === 'O' || p === 'o');
         } else if (item.id === 'delivery') {
-          hasAccess = userPermissions.delivery && userPermissions.delivery.some(p => p === 'O' || p === 'o');
+          const managementAccess = userPermissions.delivery && userPermissions.delivery.some(p => p === 'O' || p === 'o');
+          const driverAccess = userPermissions.driver && (
+            userPermissions.driver.pickup === 'O' || userPermissions.driver.pickup === 'o' ||
+            userPermissions.driver.delivery === 'O' || userPermissions.driver.delivery === 'o'
+          );
+          hasAccess = managementAccess || driverAccess;
         } else {
           hasAccess = userPermissions[item.id] === 'O' || userPermissions[item.id] === 'o';
         }
@@ -202,6 +207,9 @@
 
   // ── BS 검색 관련 로직 ──
   let userPermissions = null; // 모든 메뉴 권한 객체
+  let currentUserEmpId = '';
+  let currentUserName = '';
+  let currentUserPhone = '';
   let currentBsPart = '';
   let currentBsMasterPart = '';
   let currentVinForComplete = '';
@@ -985,6 +993,9 @@
         hideLoading();
         if (result.success) {
           userPermissions = result.permissions || [];
+          currentUserEmpId = String(result.employeeId || '').trim();
+          currentUserName = String(result.userName || '').trim();
+          currentUserPhone = String(result.userPhone || '').trim();
           showMain(result.userName);
         } else {
           alert(result.message);
@@ -1038,6 +1049,9 @@
     CustomConfirm('로그아웃 하시겠습니까?', function (isOk) {
       if (!isOk) return;
       userPermissions = null;
+      currentUserEmpId = '';
+      currentUserName = '';
+      currentUserPhone = '';
       showLogin();
       // 히스토리 초기화 (선택 사항)
       history.replaceState({ view: 'login' }, 'Login');
@@ -1106,6 +1120,7 @@
   let deliveryListCache = [];
   let activeDeliveryTabId = 'apply';
   let currentDetailRowNo = null;
+  let deliveryDetailActionType = '';
 
   function showDeliveryView() {
     document.getElementById('mainView').style.display = 'none';
@@ -1131,7 +1146,7 @@
     const appSearch = document.getElementById('approveSearchInput');
     if (appSearch) appSearch.value = '';
     const appStatus = document.getElementById('approveStatusFilter');
-    if (appStatus) appStatus.value = 'ALL';
+    if (appStatus) appStatus.value = 'APPLY';
     const appResults = document.getElementById('deliveryApproveResults');
     if (appResults) {
       appResults.innerHTML = `
@@ -1158,6 +1173,32 @@
           <p>조회 버튼을 눌러 목록을 불러와주세요.</p>
         </div>`;
     }
+
+    const pickupDateFrom = document.getElementById('deliveryPickupDateFrom');
+    if (pickupDateFrom) pickupDateFrom.value = '';
+    const pickupDateTo = document.getElementById('deliveryPickupDateTo');
+    if (pickupDateTo) pickupDateTo.value = '';
+    const pickupResults = document.getElementById('deliveryPickupResults');
+    if (pickupResults) {
+      pickupResults.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">manage_search</span>
+          <p>조회 버튼을 눌러 목록을 불러와주세요.</p>
+        </div>`;
+    }
+
+    const driverDateFrom = document.getElementById('deliveryDriverDateFrom');
+    if (driverDateFrom) driverDateFrom.value = '';
+    const driverDateTo = document.getElementById('deliveryDriverDateTo');
+    if (driverDateTo) driverDateTo.value = '';
+    const driverResults = document.getElementById('deliveryDriverResults');
+    if (driverResults) {
+      driverResults.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">manage_search</span>
+          <p>조회 버튼을 눌러 목록을 불러와주세요.</p>
+        </div>`;
+    }
   }
 
   function renderDeliveryTabs() {
@@ -1165,9 +1206,12 @@
     tabsContainer.innerHTML = '';
 
     // permissions: userPermissions.delivery = [J열, K열, L열]
-    const applyPerm = userPermissions.delivery[0] === 'O' || userPermissions.delivery[0] === 'o'; // J열: 신청
-    const approvePerm = userPermissions.delivery[1] === 'O' || userPermissions.delivery[1] === 'o'; // K열: 승인
-    const listPerm = userPermissions.delivery[2] === 'O' || userPermissions.delivery[2] === 'o'; // L열: 목록
+    const deliveryPerms = userPermissions.delivery || [];
+    const applyPerm = deliveryPerms[0] === 'O' || deliveryPerms[0] === 'o'; // J열: 신청
+    const approvePerm = deliveryPerms[1] === 'O' || deliveryPerms[1] === 'o'; // K열: 승인
+    const listPerm = deliveryPerms[2] === 'O' || deliveryPerms[2] === 'o'; // L열: 목록
+    const pickupPerm = userPermissions.driver && (userPermissions.driver.pickup === 'O' || userPermissions.driver.pickup === 'o'); // O열
+    const driverDeliveryPerm = userPermissions.driver && (userPermissions.driver.delivery === 'O' || userPermissions.driver.delivery === 'o'); // P열
 
     let firstActiveTab = null;
 
@@ -1182,6 +1226,14 @@
     if (listPerm) {
       tabsContainer.innerHTML += `<div class="tab-item" id="tabDeliveryList" onclick="switchDeliveryTab('list')">배차 목록</div>`;
       if (!firstActiveTab) firstActiveTab = 'list';
+    }
+    if (pickupPerm) {
+      tabsContainer.innerHTML += `<div class="tab-item" id="tabDeliveryPickup" onclick="switchDeliveryTab('pickup')">회수</div>`;
+      if (!firstActiveTab) firstActiveTab = 'pickup';
+    }
+    if (driverDeliveryPerm) {
+      tabsContainer.innerHTML += `<div class="tab-item" id="tabDeliveryDriver" onclick="switchDeliveryTab('driver')">배송관리</div>`;
+      if (!firstActiveTab) firstActiveTab = 'driver';
     }
 
     // 초기 화면 이름 자동 설정 (임시)
@@ -1215,6 +1267,10 @@
     } else if (tabId === 'list') {
       document.getElementById('deliveryListSection').style.display = 'block';
       // Initial load blocked as per request #2
+    } else if (tabId === 'pickup') {
+      document.getElementById('deliveryPickupSection').style.display = 'block';
+    } else if (tabId === 'driver') {
+      document.getElementById('deliveryDriverSection').style.display = 'block';
     }
   }
 
@@ -1411,7 +1467,7 @@
     const dateFrom = String(document.getElementById('approveDateFrom').value || '').trim();
     const dateTo = String(document.getElementById('approveDateTo').value || '').trim();
     const query = String(document.getElementById('approveSearchInput').value || '').trim();
-    const status = String(document.getElementById('approveStatusFilter').value || 'ALL').trim();
+    const status = 'APPLY';
 
     const container = document.getElementById('deliveryApproveResults');
     container.innerHTML = `
@@ -1468,11 +1524,13 @@
       const categoryLabel = getDeliveryCategoryLabel(item);
       const originLabel = getDeliveryRouteLabel(item, 'origin');
       const destLabel = getDeliveryRouteLabel(item, 'dest');
+      const originAddressLabel = getDeliveryAddressLabel(item, 'origin');
+      const destAddressLabel = getDeliveryAddressLabel(item, 'dest');
       const contentsCart = String(item.contentsCart || '').trim() || '-';
       const contentsMaterial = String(item.contentsMaterial || '').trim() || '-';
       const note = String(item.note || '').trim() || '-';
 
-      const dateToShow = item.status === '배차승인' ? item.approvedDate : item.applyDate;
+      const dateToShow = item.searchDate || item.approvedDate || item.applyDate;
       const formattedDate = dateToShow ? String(dateToShow).trim() : '';
 
       html += `
@@ -1485,6 +1543,10 @@
             </div>
           </div>
           <div class="delivery-list-route">${escapeHtml(originLabel)} → ${escapeHtml(destLabel)}</div>
+          <div class="delivery-list-address">
+            <div><strong>출발지 주소</strong> ${escapeHtml(originAddressLabel)}</div>
+            <div><strong>목적지 주소</strong> ${escapeHtml(destAddressLabel)}</div>
+          </div>
           <div class="delivery-list-meta">
             <div><strong>카트</strong> ${escapeHtml(contentsCart)}</div>
             <div><strong>자재</strong> ${escapeHtml(contentsMaterial)}</div>
@@ -1492,7 +1554,10 @@
           </div>
           ${item.status === '배차신청' ? `
           <div class="delivery-list-footer">
-            <button class="btn-delivery-approve-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); approveDelivery(${item.rowNo});">배차승인</button>
+            <div style="display:grid; gap:8px; width:100%;">
+              <button class="btn-delivery-approve-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); approveDelivery(${item.rowNo});">배차승인</button>
+              <button class="btn-delivery-cancel-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); cancelDelivery(${item.rowNo});">배차취소</button>
+            </div>
           </div>
           ` : ''}
         </div>`;
@@ -1502,8 +1567,17 @@
 
   function getDeliveryStatusMeta(rawStatus) {
     const status = String(rawStatus || '').toLowerCase();
+    if (status === 'cancel' || status === 'canceled' || status === 'cancelled' || status === '배차취소' || status === '취소') {
+      return { label: '배차취소', className: 'canceled' };
+    }
     if (status === 'approved' || status === '승인' || status === '배차승인') {
       return { label: '배차승인', className: 'approved' };
+    }
+    if (status === 'moving' || status === '이동중' || status === '이동 중') {
+      return { label: '이동 중', className: 'moving' };
+    }
+    if (status === 'completed' || status === '배송완료' || status === '배송 완료') {
+      return { label: '배송완료', className: 'completed' };
     }
     return { label: '배차신청', className: 'apply' };
   }
@@ -1513,6 +1587,13 @@
       return String(item.originManual || item.originBranch || item.originAddress || '-').trim();
     }
     return String(item.destManual || item.destBranch || item.destAddress || '-').trim();
+  }
+
+  function getDeliveryAddressLabel(item, type) {
+    if (type === 'origin') {
+      return String(item.originManual || item.originAddress || '-').trim();
+    }
+    return String(item.destManual || item.destAddress || '-').trim();
   }
 
   function getDeliveryCategoryLabel(item) {
@@ -1591,12 +1672,14 @@
       const statusMeta = getDeliveryStatusMeta(item.status);
       const originLabel = getDeliveryRouteLabel(item, 'origin');
       const destLabel = getDeliveryRouteLabel(item, 'dest');
+      const originAddressLabel = getDeliveryAddressLabel(item, 'origin');
+      const destAddressLabel = getDeliveryAddressLabel(item, 'dest');
       const categoryLabel = getDeliveryCategoryLabel(item);
       const contentsCart = String(item.contentsCart || '').trim() || '-';
       const contentsMaterial = String(item.contentsMaterial || '').trim() || '-';
       const note = String(item.note || '').trim() || '-';
 
-      const dateToShow = item.status === '배차승인' ? item.approvedDate : item.applyDate;
+      const dateToShow = item.searchDate || item.approvedDate || item.applyDate;
       const formattedDate = dateToShow ? String(dateToShow).trim() : '';
 
       html += `
@@ -1609,6 +1692,10 @@
             </div>
           </div>
           <div class="delivery-list-route">${escapeHtml(originLabel)} → ${escapeHtml(destLabel)}</div>
+          <div class="delivery-list-address">
+            <div><strong>출발지 주소</strong> ${escapeHtml(originAddressLabel)}</div>
+            <div><strong>목적지 주소</strong> ${escapeHtml(destAddressLabel)}</div>
+          </div>
           <div class="delivery-list-meta">
             <div><strong>카트</strong> ${escapeHtml(contentsCart)}</div>
             <div><strong>자재</strong> ${escapeHtml(contentsMaterial)}</div>
@@ -1617,6 +1704,187 @@
         </div>`;
     });
     container.innerHTML = html;
+  }
+
+  function loadDeliveryPickupList() {
+    const dateFrom = String(document.getElementById('deliveryPickupDateFrom').value || '').trim();
+    const dateTo = String(document.getElementById('deliveryPickupDateTo').value || '').trim();
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      alert('조회 시작일이 종료일보다 늦습니다. 날짜를 다시 확인해주세요.');
+      return;
+    }
+    const container = document.getElementById('deliveryPickupResults');
+    container.innerHTML = `
+      <div class="empty-state">
+        <span class="material-icons">hourglass_top</span>
+        <p>회수 목록 조회 중입니다...</p>
+      </div>`;
+
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (res) {
+        hideLoading();
+        if (!res || !res.success) {
+          container.innerHTML = `
+            <div class="empty-state" style="color:#d32f2f;">
+              <span class="material-icons">error_outline</span>
+              <p>${escapeHtml((res && res.message) ? res.message : '회수 목록 조회에 실패했습니다.')}</p>
+            </div>`;
+          return;
+        }
+        deliveryListCache = res.items || [];
+        renderDriverResults('deliveryPickupResults', deliveryListCache, 'pickup');
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        container.innerHTML = `
+          <div class="empty-state" style="color:#d32f2f;">
+            <span class="material-icons">error_outline</span>
+            <p>회수 목록 조회 실패: ${escapeHtml(err)}</p>
+          </div>`;
+      })
+      .getDriverPickupList({
+        dateFrom: dateFrom,
+        dateTo: dateTo
+      });
+  }
+
+  function loadDeliveryDriverList() {
+    const dateFrom = String(document.getElementById('deliveryDriverDateFrom').value || '').trim();
+    const dateTo = String(document.getElementById('deliveryDriverDateTo').value || '').trim();
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      alert('조회 시작일이 종료일보다 늦습니다. 날짜를 다시 확인해주세요.');
+      return;
+    }
+    const container = document.getElementById('deliveryDriverResults');
+    container.innerHTML = `
+      <div class="empty-state">
+        <span class="material-icons">hourglass_top</span>
+        <p>배송 목록 조회 중입니다...</p>
+      </div>`;
+
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (res) {
+        hideLoading();
+        if (!res || !res.success) {
+          container.innerHTML = `
+            <div class="empty-state" style="color:#d32f2f;">
+              <span class="material-icons">error_outline</span>
+              <p>${escapeHtml((res && res.message) ? res.message : '배송 목록 조회에 실패했습니다.')}</p>
+            </div>`;
+          return;
+        }
+        deliveryListCache = res.items || [];
+        renderDriverResults('deliveryDriverResults', deliveryListCache, 'complete');
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        container.innerHTML = `
+          <div class="empty-state" style="color:#d32f2f;">
+            <span class="material-icons">error_outline</span>
+            <p>배송 목록 조회 실패: ${escapeHtml(err)}</p>
+          </div>`;
+      })
+      .getDriverDeliveryList({
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+        employeeName: currentUserName
+      });
+  }
+
+  function renderDriverResults(containerId, items, actionType) {
+    const container = document.getElementById(containerId);
+    if (!items || items.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">list_alt</span>
+          <p>조건에 맞는 항목이 없습니다.</p>
+        </div>`;
+      return;
+    }
+
+    let html = '';
+    items.forEach(function (item) {
+      const statusMeta = getDeliveryStatusMeta(item.status);
+      const categoryLabel = getDeliveryCategoryLabel(item);
+      const originLabel = getDeliveryRouteLabel(item, 'origin');
+      const destLabel = getDeliveryRouteLabel(item, 'dest');
+      const originAddressLabel = getDeliveryAddressLabel(item, 'origin');
+      const destAddressLabel = getDeliveryAddressLabel(item, 'dest');
+      const contentsCart = String(item.contentsCart || '').trim() || '-';
+      const contentsMaterial = String(item.contentsMaterial || '').trim() || '-';
+      const note = String(item.note || '').trim() || '-';
+      const actionLabel = actionType === 'pickup' ? '회수' : '배송 완료';
+      const actionFn = actionType === 'pickup'
+        ? `markPickupInTransit(${item.rowNo})`
+        : `markDriverDeliveryComplete(${item.rowNo})`;
+
+      html += `
+        <div class="delivery-list-item" onclick="openDeliveryDetail(${item.rowNo})">
+          <div class="delivery-list-top">
+            <span class="delivery-list-category">${escapeHtml(categoryLabel)}</span>
+            <span class="delivery-list-status ${statusMeta.className}">${statusMeta.label}</span>
+          </div>
+          <div class="delivery-list-route">${escapeHtml(originLabel)} → ${escapeHtml(destLabel)}</div>
+          <div class="delivery-list-address">
+            <div><strong>출발지 주소</strong> ${escapeHtml(originAddressLabel)}</div>
+            <div><strong>목적지 주소</strong> ${escapeHtml(destAddressLabel)}</div>
+          </div>
+          <div class="delivery-list-meta">
+            <div><strong>카트</strong> ${escapeHtml(contentsCart)}</div>
+            <div><strong>자재</strong> ${escapeHtml(contentsMaterial)}</div>
+            <div><strong>비고</strong> ${escapeHtml(note)}</div>
+          </div>
+          <div class="delivery-list-footer">
+            <button class="btn-delivery-approve-inline" style="width:100%; border-radius:8px;" onclick="event.stopPropagation(); ${actionFn};">${actionLabel}</button>
+          </div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+  }
+
+  function markPickupInTransit(rowNo) {
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (res) {
+        hideLoading();
+        if (!res || !res.success) {
+          alert((res && res.message) ? res.message : '회수 처리에 실패했습니다.');
+          return;
+        }
+        CustomAlert('회수 처리되었습니다.', function () {
+          closeDeliveryDetail();
+          loadDeliveryPickupList();
+        });
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        alert('회수 처리 실패: ' + err);
+      })
+      .markDeliveryInTransit(rowNo, currentUserEmpId, currentUserName);
+  }
+
+  function markDriverDeliveryComplete(rowNo) {
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (res) {
+        hideLoading();
+        if (!res || !res.success) {
+          alert((res && res.message) ? res.message : '배송완료 처리에 실패했습니다.');
+          return;
+        }
+        CustomAlert('배송완료 처리되었습니다.', function () {
+          closeDeliveryDetail();
+          loadDeliveryDriverList();
+        });
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        alert('배송완료 처리 실패: ' + err);
+      })
+      .markDeliveryCompleted(rowNo, currentUserName);
   }
 
   function openDeliveryDetail(rowNo) {
@@ -1632,11 +1900,44 @@
     const originLabel = getDeliveryRouteLabel(item, 'origin');
     const destLabel = getDeliveryRouteLabel(item, 'dest');
     const isApproved = item.status === '배차승인';
+    const isMoving = item.status === '이동 중';
+    const isCompleted = item.status === '배송완료';
+    const originAddressLabel = String(item.originManual || item.originAddress || '-').trim();
+    const destAddressLabel = String(item.destManual || item.destAddress || '-').trim();
+    const originAddressEncoded = encodeURIComponent(originAddressLabel);
+    const destAddressEncoded = encodeURIComponent(destAddressLabel);
+    const originTelRaw = String(item.originTel || '').trim();
+    const originManagerTelRaw = String(item.originManagerTel || '').trim();
+    const destTelRaw = String(item.destTel || '').trim();
+    const destManagerTelRaw = String(item.destManagerTel || '').trim();
+    const originTelDigits = originTelRaw.replace(/[^0-9]/g, '');
+    const originManagerTelDigits = originManagerTelRaw.replace(/[^0-9]/g, '');
+    const destTelDigits = destTelRaw.replace(/[^0-9]/g, '');
+    const destManagerTelDigits = destManagerTelRaw.replace(/[^0-9]/g, '');
+    const originTelHtml = originTelDigits ? `<a href="tel:${originTelDigits}">${escapeHtml(originTelRaw)}</a>` : (originTelRaw ? escapeHtml(originTelRaw) : '-');
+    const originManagerTelHtml = originManagerTelDigits ? `<a href="tel:${originManagerTelDigits}">${escapeHtml(originManagerTelRaw)}</a>` : (originManagerTelRaw ? escapeHtml(originManagerTelRaw) : '-');
+    const destTelHtml = destTelDigits ? `<a href="tel:${destTelDigits}">${escapeHtml(destTelRaw)}</a>` : (destTelRaw ? escapeHtml(destTelRaw) : '-');
+    const destManagerTelHtml = destManagerTelDigits ? `<a href="tel:${destManagerTelDigits}">${escapeHtml(destManagerTelRaw)}</a>` : (destManagerTelRaw ? escapeHtml(destManagerTelRaw) : '-');
+    const driverName = String(item.pickupEmpName || '-').trim();
+    const driverPhoneRaw = String(item.driverPhone || '').trim();
+    const driverPhoneDigits = driverPhoneRaw.replace(/[^0-9]/g, '');
+    const driverPhoneHtml = driverPhoneDigits
+      ? `<a href="tel:${driverPhoneDigits}">${escapeHtml(driverPhoneRaw)}</a>`
+      : (driverPhoneRaw ? escapeHtml(driverPhoneRaw) : '-');
+    const driverDisplay = (driverName && driverName !== '-')
+      ? `${escapeHtml(driverName)} (${driverPhoneHtml})`
+      : '-';
 
     document.getElementById('deliveryApplySection').style.display = 'none';
     document.getElementById('deliveryApproveSection').style.display = 'none';
     document.getElementById('deliveryListSection').style.display = 'none';
+    document.getElementById('deliveryPickupSection').style.display = 'none';
+    document.getElementById('deliveryDriverSection').style.display = 'none';
     document.getElementById('deliveryDetailSection').style.display = 'block';
+
+    // 모바일에서 상세 진입 시 상단부터 보이도록 스크롤 정렬
+    const deliveryView = document.getElementById('deliveryView');
+    if (deliveryView) deliveryView.scrollTop = 0;
 
     document.getElementById('deliveryDetailBody').innerHTML = `
       <div class="delivery-detail-row">
@@ -1652,8 +1953,42 @@
         <div class="delivery-detail-value">${escapeHtml(originLabel)}</div>
       </div>
       <div class="delivery-detail-row">
+        <div class="delivery-detail-label">출발지 주소</div>
+        <div class="delivery-detail-value">
+          ${escapeHtml(originAddressLabel)}
+          <button class="icon-btn-small" onclick="copyToClipboard(decodeURIComponent('${originAddressEncoded}'))" style="border:none;background:none;color:#757575;cursor:pointer;padding:0 0 0 6px;vertical-align:middle;">
+            <span class="material-icons" style="font-size:16px;">content_copy</span>
+          </button>
+        </div>
+      </div>
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">영업점 번호</div>
+        <div class="delivery-detail-value">${originTelHtml}</div>
+      </div>
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">점장 번호</div>
+        <div class="delivery-detail-value">${originManagerTelHtml}</div>
+      </div>
+      <div class="delivery-detail-row">
         <div class="delivery-detail-label">목적지</div>
         <div class="delivery-detail-value">${escapeHtml(destLabel)}</div>
+      </div>
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">목적지 주소</div>
+        <div class="delivery-detail-value">
+          ${escapeHtml(destAddressLabel)}
+          <button class="icon-btn-small" onclick="copyToClipboard(decodeURIComponent('${destAddressEncoded}'))" style="border:none;background:none;color:#757575;cursor:pointer;padding:0 0 0 6px;vertical-align:middle;">
+            <span class="material-icons" style="font-size:16px;">content_copy</span>
+          </button>
+        </div>
+      </div>
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">영업점 번호</div>
+        <div class="delivery-detail-value">${destTelHtml}</div>
+      </div>
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">점장 번호</div>
+        <div class="delivery-detail-value">${destManagerTelHtml}</div>
       </div>
       <div class="delivery-detail-row">
         <div class="delivery-detail-label">카트</div>
@@ -1668,17 +2003,47 @@
         <div class="delivery-detail-value">${escapeHtml(item.note || '-')}</div>
       </div>
       <div class="delivery-detail-row">
-        <div class="delivery-detail-label">${isApproved ? '배차 승인일' : '희망일'}</div>
-        <div class="delivery-detail-value">${escapeHtml((isApproved ? item.approvedDate : item.preferredDate) || '-')}</div>
+        <div class="delivery-detail-label">배차 승인일</div>
+        <div class="delivery-detail-value">${escapeHtml(item.approvedDate || '-')}</div>
+      </div>
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">회수일</div>
+        <div class="delivery-detail-value">${escapeHtml(item.pickupAt || '-')}</div>
+      </div>
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">배송 완료일</div>
+        <div class="delivery-detail-value">${escapeHtml(item.deliveryCompletedAt || '-')}</div>
       </div>
       <div class="delivery-detail-row">
         <div class="delivery-detail-label">신청자</div>
         <div class="delivery-detail-value">${escapeHtml(item.requesterName || '-')}</div>
+      </div>
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">담당 기사</div>
+        <div class="delivery-detail-value">${driverDisplay}</div>
       </div>`;
 
     const detailBtn = document.getElementById('deliveryDetailApproveBtn');
+    const detailCancelBtn = document.getElementById('deliveryDetailCancelBtn');
     if (detailBtn) {
-      detailBtn.style.display = item.status === '배차신청' ? 'block' : 'none';
+      deliveryDetailActionType = '';
+      if (detailCancelBtn) detailCancelBtn.style.display = 'none';
+      if (activeDeliveryTabId === 'approve' && item.status === '배차신청') {
+        detailBtn.innerText = '배차승인';
+        detailBtn.style.display = 'block';
+        if (detailCancelBtn) detailCancelBtn.style.display = 'block';
+        deliveryDetailActionType = 'approve';
+      } else if (activeDeliveryTabId === 'pickup' && item.status === '배차승인') {
+        detailBtn.innerText = '회수';
+        detailBtn.style.display = 'block';
+        deliveryDetailActionType = 'pickup';
+      } else if (activeDeliveryTabId === 'driver' && item.status === '이동 중') {
+        detailBtn.innerText = '배송 완료';
+        detailBtn.style.display = 'block';
+        deliveryDetailActionType = 'complete';
+      } else {
+        detailBtn.style.display = 'none';
+      }
     }
   }
 
@@ -1694,7 +2059,7 @@
   }
 
   function approveDelivery(rowNo) {
-    CustomConfirm('정말로 배차를 승인하시겠습니까?', function (isOk) {
+    CustomConfirm('배차를 승인하시겠습니까?', function (isOk) {
       if (!isOk) return;
 
       showLoading();
@@ -1712,19 +2077,65 @@
             loadDeliveryApprovals();
           } else if (activeDeliveryTabId === 'list') {
             loadDeliveryList();
+          } else if (activeDeliveryTabId === 'pickup') {
+            loadDeliveryPickupList();
+          } else if (activeDeliveryTabId === 'driver') {
+            loadDeliveryDriverList();
           }
         })
         .withFailureHandler(function (err) {
           hideLoading();
           alert('승인 처리 중 오류 발생: ' + err);
         })
-        .approveDeliveryRequest(rowNo);
+      .approveDeliveryRequest(rowNo);
+    });
+  }
+
+  function cancelDelivery(rowNo) {
+    CustomConfirm('정말로 배차를 취소하시겠습니까?\n취소 후에는 복구할 수 없습니다.', function (isOk) {
+      if (!isOk) return;
+
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function (res) {
+          hideLoading();
+          if (!res || !res.success) {
+            alert((res && res.message) ? res.message : '배차취소 처리에 실패했습니다.');
+            return;
+          }
+          alert('배차취소 처리되었습니다.');
+          closeDeliveryDetail();
+
+          if (activeDeliveryTabId === 'approve') {
+            loadDeliveryApprovals();
+          } else if (activeDeliveryTabId === 'list') {
+            loadDeliveryList();
+          }
+        })
+        .withFailureHandler(function (err) {
+          hideLoading();
+          alert('배차취소 처리 중 오류 발생: ' + err);
+        })
+        .cancelDeliveryRequest(rowNo);
     });
   }
 
   function approveDeliveryFromDetail() {
     if (!currentDetailRowNo) return;
+    if (deliveryDetailActionType === 'pickup') {
+      markPickupInTransit(currentDetailRowNo);
+      return;
+    }
+    if (deliveryDetailActionType === 'complete') {
+      markDriverDeliveryComplete(currentDetailRowNo);
+      return;
+    }
     approveDelivery(currentDetailRowNo);
+  }
+
+  function cancelDeliveryFromDetail() {
+    if (!currentDetailRowNo) return;
+    cancelDelivery(currentDetailRowNo);
   }
 
   // ==========================================

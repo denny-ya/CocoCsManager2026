@@ -114,9 +114,7 @@
 
       <div class="filter-group" style="margin-top: 10px;">
         <select id="approveStatusFilter" class="delivery-search-input">
-          <option value="ALL">상태 전체</option>
           <option value="APPLY">배차신청</option>
-          <option value="APPROVED">배차승인</option>
         </select>
       </div>
     </div>
@@ -151,9 +149,12 @@
 
       <div class="filter-group" style="margin-top: 10px;">
         <select id="deliveryStatusFilter" class="delivery-search-input">
-          <option value="ALL">상태 전체</option>
+          <option value="ALL">전체(취소건 제외)</option>
           <option value="APPLY">배차신청</option>
           <option value="APPROVED">배차승인</option>
+          <option value="MOVING">이동 중</option>
+          <option value="DONE">배송완료</option>
+          <option value="CANCEL">배차취소</option>
         </select>
       </div>
     </div>
@@ -162,6 +163,46 @@
       <div class="empty-state">
         <span class="material-icons">manage_search</span>
         <p>검색 조건을 선택한 후 조회해주세요.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="deliveryPickupSection" class="bs-section" style="display: none;">
+    <div class="search-box delivery-search-panel">
+      <div class="delivery-date-range-group delivery-date-range-with-search">
+        <input type="date" id="deliveryPickupDateFrom" class="delivery-search-input">
+        <span class="delivery-range-sep">~</span>
+        <input type="date" id="deliveryPickupDateTo" class="delivery-search-input">
+        <button class="search-btn delivery-date-search-btn" onclick="loadDeliveryPickupList()">
+          <span class="material-icons">search</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="deliveryPickupResults" class="results-container">
+      <div class="empty-state">
+        <span class="material-icons">manage_search</span>
+        <p>조회 버튼을 눌러 목록을 불러와주세요.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="deliveryDriverSection" class="bs-section" style="display: none;">
+    <div class="search-box delivery-search-panel">
+      <div class="delivery-date-range-group delivery-date-range-with-search">
+        <input type="date" id="deliveryDriverDateFrom" class="delivery-search-input">
+        <span class="delivery-range-sep">~</span>
+        <input type="date" id="deliveryDriverDateTo" class="delivery-search-input">
+        <button class="search-btn delivery-date-search-btn" onclick="loadDeliveryDriverList()">
+          <span class="material-icons">search</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="deliveryDriverResults" class="results-container">
+      <div class="empty-state">
+        <span class="material-icons">manage_search</span>
+        <p>조회 버튼을 눌러 목록을 불러와주세요.</p>
       </div>
     </div>
   </div>
@@ -176,6 +217,8 @@
       <div id="deliveryDetailBody"></div>
       <button id="deliveryDetailApproveBtn" class="btn btn-primary btn-delivery-approve" style="display:none; margin-top:16px;"
         onclick="approveDeliveryFromDetail()">배차승인</button>
+      <button id="deliveryDetailCancelBtn" class="btn btn-primary btn-delivery-cancel" style="display:none; margin-top:10px;"
+        onclick="cancelDeliveryFromDetail()">배차취소</button>
     </div>
   </div>
 </div>

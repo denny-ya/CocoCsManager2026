@@ -705,6 +705,14 @@
           </div>`;
       }
 
+      // 3. 폐기 대상 배지 (Q열에 내용이 있는 경우 표시)
+      if (item.disposalTarget && item.disposalTarget.trim()) {
+        badgesHtml += `
+          <div class="status-badge" style="background:#f3e5f5; color:#6a1b9a; border:1px solid #ce93d8; margin-bottom:8px; display:block; text-align:center; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:600;">
+            <span class="material-icons" style="font-size:18px; vertical-align:middle; margin-right:6px;">delete</span>폐기: ${item.disposalTarget}
+          </div>`;
+      }
+
       badgesHtml += '</div>';
 
       // 제외사유Badge

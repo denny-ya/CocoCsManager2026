@@ -54,9 +54,21 @@
 
       <div class="form-group">
         <label>내용물</label>
-        <div style="display:flex; gap:10px;">
-          <input type="text" id="applyContentsCart" placeholder="[카트] 입력란" style="flex:1;">
-          <input type="text" id="applyContentsMaterial" placeholder="[자재] 입력란" style="flex:1;">
+        <div class="delivery-contents-row">
+          <div class="delivery-contents-col">
+            <div class="delivery-contents-input-row">
+              <input type="text" id="applyContentsCart" class="apply-contents-cart-input" placeholder="[카트] 입력란">
+              <button type="button" class="delivery-content-add-btn" onclick="addDeliveryContentInput('cart')">+</button>
+            </div>
+            <div id="applyContentsCartContainer"></div>
+          </div>
+          <div class="delivery-contents-col">
+            <div class="delivery-contents-input-row">
+              <input type="text" id="applyContentsMaterial" class="apply-contents-material-input" placeholder="[자재] 입력란">
+              <button type="button" class="delivery-content-add-btn" onclick="addDeliveryContentInput('material')">+</button>
+            </div>
+            <div id="applyContentsMaterialContainer"></div>
+          </div>
         </div>
       </div>
 
@@ -104,8 +116,15 @@
         <input type="date" id="approveDateTo" class="delivery-search-input" placeholder="종료일">
       </div>
 
-      <div class="search-input-group">
-        <input type="text" id="approveSearchInput" class="delivery-search-input" placeholder="목적지 또는 신청자 이름 검색"
+      <div class="search-input-group" style="display:flex; gap:8px;">
+        <select id="approveSearchKey" class="delivery-search-input" style="width: 38%;">
+          <option value="originPart">파트(출발지)</option>
+          <option value="destPart">파트(목적지)</option>
+          <option value="origin">출발지</option>
+          <option value="dest">목적지</option>
+          <option value="requester">신청자명</option>
+        </select>
+        <input type="text" id="approveSearchInput" class="delivery-search-input" placeholder="검색어 입력"
           onkeypress="if(event.key==='Enter') loadDeliveryApprovals()">
         <button class="search-btn" onclick="loadDeliveryApprovals()" style="width:52px; min-width:52px;">
           <span class="material-icons">search</span>
@@ -129,13 +148,16 @@
 
   <div id="deliveryListSection" class="bs-section" style="display: none;">
     <div class="search-box delivery-search-panel">
-      <div class="filter-group" style="margin-bottom:10px;">
-        <input type="date" id="deliveryDateFilter" class="delivery-search-input">
+      <div class="delivery-date-range-group" style="margin-bottom:10px;">
+        <input type="date" id="deliveryListDateFrom" class="delivery-search-input" placeholder="시작일">
+        <span class="delivery-range-sep">~</span>
+        <input type="date" id="deliveryListDateTo" class="delivery-search-input" placeholder="종료일">
       </div>
 
       <div class="search-input-group" style="display:flex; gap:8px;">
         <select id="deliverySearchKey" class="delivery-search-input" style="width: 38%;">
-          <option value="part">파트</option>
+          <option value="originPart">파트(출발지)</option>
+          <option value="destPart">파트(목적지)</option>
           <option value="origin">출발지</option>
           <option value="dest">목적지</option>
           <option value="requester">신청자명</option>

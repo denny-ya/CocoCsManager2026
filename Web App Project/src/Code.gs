@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Google Apps Script Web App - Server Side Logic
  * 
  * Target Spreadsheet: https://docs.google.com/spreadsheets/d/1LxiBdUywd5IMLckyRZvPyLRKkV_TQXO5PUh_xaPROvo/edit#gid=0
@@ -636,8 +636,9 @@ function getDeliveryList(filters) {
     const data = sheet.getDataRange().getValues();
     const items = [];
 
-    const selectedDate = String(filter.date || '').trim();
-    const searchKey = String(filter.searchKey || 'part').trim();
+    const dateFrom = String(filter.dateFrom || filter.date || '').trim();
+    const dateTo = String(filter.dateTo || filter.date || '').trim();
+    const searchKey = String(filter.searchKey || 'originPart').trim();
     const searchValue = normalizeText(filter.searchValue || '');
     const statusFilter = String(filter.status || 'ALL').trim();
 
@@ -669,12 +670,28 @@ function getDeliveryList(filters) {
         pickupEmpName: String(row[17] || '').trim(), // R (담당기사명 또는 사번)
         pickupAt: formatDeliveryDateTime(row[18]), // S (회수일시)
         deliveryCompletedAt: formatDeliveryDateTime(row[19]), // T (배송완료일시)
+        requesterPhone: '', // 신청자 연락처
         driverPhone: '', // 로그인 계정 목록 D열(연락처) 매핑
         originTel: '', // 주소록 D열(영업점 번호)
         originManagerTel: '', // 주소록 E열(점장 번호)
         destTel: '', // 주소록 D열(영업점 번호)
         destManagerTel: '' // 주소록 E열(점장 번호)
       };
+
+      const requesterKey = String(item.requesterName || '').trim();
+      if (requesterKey) {
+        const requesterByEmp = loginLookup.byEmpId[requesterKey];
+        if (requesterByEmp) {
+          item.requesterName = requesterByEmp.name || requesterKey;
+          item.requesterPhone = requesterByEmp.phone || '';
+        } else {
+          const requesterByName = loginLookup.byName[requesterKey];
+          if (requesterByName) {
+            item.requesterPhone = requesterByName.phone || '';
+          }
+        }
+      }
+
       const driverKey = String(item.pickupEmpName || '').trim();
       if (driverKey) {
         const byEmp = loginLookup.byEmpId[driverKey];
@@ -710,8 +727,11 @@ function getDeliveryList(filters) {
         item.searchDate = item.approvedDate || item.applyDate;
       }
 
+      const targetDate = getDateOnly(item.searchDate);
+
       if (!item.requesterName && !item.category) continue;
-      if (selectedDate && getDateOnly(item.searchDate) !== selectedDate) continue;
+      if (dateFrom && (!targetDate || targetDate < dateFrom)) continue;
+      if (dateTo && (!targetDate || targetDate > dateTo)) continue;
       if (statusFilter === 'ALL' && item.status === '배차취소') continue;
       if (statusFilter === 'APPLY' && item.status !== '배차신청') continue;
       if (statusFilter === 'APPROVED' && item.status !== '배차승인') continue;
@@ -721,7 +741,11 @@ function getDeliveryList(filters) {
 
       if (searchValue) {
         let target = '';
-        if (searchKey === 'part') {
+        if (searchKey === 'originPart') {
+          target = item.originPart;
+        } else if (searchKey === 'destPart') {
+          target = item.destPart;
+        } else if (searchKey === 'part') { // backward compatibility
           target = [item.originPart, item.destPart].join(' ');
         } else if (searchKey === 'origin') {
           target = [item.originBranch, item.originAddress, item.originManual].join(' ');
@@ -757,29 +781,16 @@ function getDeliveryApprovalList(filters) {
     const filter = filters || {};
     const dateFrom = String(filter.dateFrom || '').trim();
     const dateTo = String(filter.dateTo || '').trim();
-    const query = normalizeText(filter.query || '');
+    const searchKey = String(filter.searchKey || 'originPart').trim();
+    const searchValue = String(filter.searchValue || '').trim();
 
-    const res = getDeliveryList({ status: 'ALL' });
-    if (!res || !res.success) {
-      return { success: false, message: '목록 조회 실패', items: [] };
-    }
-
-    const items = (res.items || []).filter(function (item) {
-      if (item.status !== '배차신청') return false;
-      const searchDate = getDateOnly(item.searchDate);
-      if (dateFrom && (!searchDate || searchDate < dateFrom)) return false;
-      if (dateTo && (!searchDate || searchDate > dateTo)) return false;
-
-      if (query) {
-        const target = normalizeText([
-          item.destBranch, item.destAddress, item.destManual, item.requesterName
-        ].join(' '));
-        if (!target.includes(query)) return false;
-      }
-      return true;
+    return getDeliveryList({
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      searchKey: searchKey,
+      searchValue: searchValue,
+      status: 'APPLY'
     });
-
-    return { success: true, items: items };
   } catch (e) {
     return { success: false, message: e.toString(), items: [] };
   }
@@ -969,8 +980,18 @@ function saveDeliveryApply(payload) {
     const destManual = String(payload.destManual || '').trim();
     const preferredDate = String(payload.preferredDate || '').trim();
     const note = String(payload.note || '').trim();
+    const maxContentsCount = 10;
+
+    const cartItems = contentsCart
+      ? contentsCart.split(',').map(function(item) { return String(item || '').trim(); }).filter(function(item) { return item !== ''; })
+      : [];
+    const materialItems = contentsMaterial
+      ? contentsMaterial.split(',').map(function(item) { return String(item || '').trim(); }).filter(function(item) { return item !== ''; })
+      : [];
 
     if (!requesterName || !category || !preferredDate) return { success: false, message: '필수 항목이 누락되었습니다.' };
+    if (cartItems.length > maxContentsCount) return { success: false, message: '카트는 최대 10개까지 입력 가능합니다.' };
+    if (materialItems.length > maxContentsCount) return { success: false, message: '자재는 최대 10개까지 입력 가능합니다.' };
 
     const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
     const sheet = ss.getSheets()[0];
@@ -1020,3 +1041,4 @@ function lookupBarcode(barcode) {
     return { found: false };
   }
 }
+

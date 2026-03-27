@@ -1121,6 +1121,7 @@
   let activeDeliveryTabId = 'apply';
   let currentDetailRowNo = null;
   let deliveryDetailActionType = '';
+  const DELIVERY_CONTENTS_MAX_COUNT = 10;
 
   function showDeliveryView() {
     document.getElementById('mainView').style.display = 'none';
@@ -1145,6 +1146,8 @@
     if (appDateTo) appDateTo.value = '';
     const appSearch = document.getElementById('approveSearchInput');
     if (appSearch) appSearch.value = '';
+    const appSearchKey = document.getElementById('approveSearchKey');
+    if (appSearchKey) appSearchKey.value = 'originPart';
     const appStatus = document.getElementById('approveStatusFilter');
     if (appStatus) appStatus.value = 'APPLY';
     const appResults = document.getElementById('deliveryApproveResults');
@@ -1157,10 +1160,12 @@
     }
 
     // 배차 목록 필터 초기화
-    const listDate = document.getElementById('deliveryDateFilter');
-    if (listDate) listDate.value = '';
+    const listDateFrom = document.getElementById('deliveryListDateFrom');
+    if (listDateFrom) listDateFrom.value = '';
+    const listDateTo = document.getElementById('deliveryListDateTo');
+    if (listDateTo) listDateTo.value = '';
     const listKey = document.getElementById('deliverySearchKey');
-    if (listKey) listKey.value = 'part';
+    if (listKey) listKey.value = 'originPart';
     const listSearch = document.getElementById('deliverySearchInput');
     if (listSearch) listSearch.value = '';
     const listStatus = document.getElementById('deliveryStatusFilter');
@@ -1288,6 +1293,8 @@
       const day = String(today.getDate()).padStart(2, '0');
       dateInput.value = `${year}-${month}-${day}`;
     }
+
+    ensureDeliveryContentsInputs();
   }
 
   function resetDeliveryApplyForm() {
@@ -1303,14 +1310,87 @@
     document.getElementById('applyOriginBranch').innerHTML = '<option value="">영업점을 선택하세요</option>';
     document.getElementById('applyOriginAddress').value = '';
     document.getElementById('applyOriginManual').value = '';
-    document.getElementById('applyContentsCart').value = '';
-    document.getElementById('applyContentsMaterial').value = '';
+    resetDeliveryContentsInputs();
     document.getElementById('applyDestPart').value = '';
     document.getElementById('applyDestBranch').innerHTML = '<option value="">영업점을 선택하세요</option>';
     document.getElementById('applyDestAddress').value = '';
     document.getElementById('applyDestManual').value = '';
     document.getElementById('applyDate').value = '';
     document.getElementById('applyNote').value = '';
+  }
+
+  function ensureDeliveryContentsInputs() {
+    const cartBase = document.getElementById('applyContentsCart');
+    const matBase = document.getElementById('applyContentsMaterial');
+    if (!cartBase || !matBase) return;
+
+    const cartRows = document.querySelectorAll('#deliveryApplySection .apply-contents-cart-input');
+    const matRows = document.querySelectorAll('#deliveryApplySection .apply-contents-material-input');
+    if (cartRows.length === 0) cartBase.value = '';
+    if (matRows.length === 0) matBase.value = '';
+  }
+
+  function getDeliveryContentsConfig(type) {
+    if (type === 'cart') {
+      return {
+        inputClass: 'apply-contents-cart-input',
+        containerId: 'applyContentsCartContainer',
+        placeholder: '[카트] 입력란'
+      };
+    }
+    return {
+      inputClass: 'apply-contents-material-input',
+      containerId: 'applyContentsMaterialContainer',
+      placeholder: '[자재] 입력란'
+    };
+  }
+
+  function addDeliveryContentInput(type) {
+    const config = getDeliveryContentsConfig(type);
+    const container = document.getElementById(config.containerId);
+    if (!container) return;
+
+    const allInputs = document.querySelectorAll('#deliveryApplySection .' + config.inputClass);
+    if (allInputs.length >= DELIVERY_CONTENTS_MAX_COUNT) {
+      alert('최대 10개까지 추가할 수 있습니다.');
+      return;
+    }
+
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.marginTop = '6px';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = config.inputClass;
+    input.placeholder = config.placeholder;
+    input.style.width = '100%';
+
+    row.appendChild(input);
+    container.appendChild(row);
+  }
+
+  function resetDeliveryContentsInputs() {
+    const cartBase = document.getElementById('applyContentsCart');
+    const matBase = document.getElementById('applyContentsMaterial');
+    const cartContainer = document.getElementById('applyContentsCartContainer');
+    const matContainer = document.getElementById('applyContentsMaterialContainer');
+
+    if (cartBase) cartBase.value = '';
+    if (matBase) matBase.value = '';
+    if (cartContainer) cartContainer.innerHTML = '';
+    if (matContainer) matContainer.innerHTML = '';
+  }
+
+  function collectDeliveryContents(type) {
+    const config = getDeliveryContentsConfig(type);
+    const inputs = document.querySelectorAll('#deliveryApplySection .' + config.inputClass);
+    const values = [];
+    inputs.forEach(function (el) {
+      const v = String(el.value || '').trim();
+      if (v) values.push(v);
+    });
+    return values.join(', ');
   }
 
   function handleDeliveryCategoryChange() {
@@ -1401,6 +1481,8 @@
   }
 
   function submitDeliveryApply() {
+    const contentsCart = collectDeliveryContents('cart');
+    const contentsMaterial = collectDeliveryContents('material');
     const payload = {
       requesterName: String(document.getElementById('applyName').value || '').trim(),
       category: String(document.getElementById('applyCategory').value || '').trim(),
@@ -1409,8 +1491,8 @@
       originBranch: String(document.getElementById('applyOriginBranch').value || '').trim(),
       originAddress: String(document.getElementById('applyOriginAddress').value || '').trim(),
       originManual: String(document.getElementById('applyOriginManual').value || '').trim(),
-      contentsCart: String(document.getElementById('applyContentsCart').value || '').trim(),
-      contentsMaterial: String(document.getElementById('applyContentsMaterial').value || '').trim(),
+      contentsCart: contentsCart,
+      contentsMaterial: contentsMaterial,
       destPart: String(document.getElementById('applyDestPart').value || '').trim(),
       destBranch: String(document.getElementById('applyDestBranch').value || '').trim(),
       destAddress: String(document.getElementById('applyDestAddress').value || '').trim(),
@@ -1443,6 +1525,14 @@
       alert('배차 희망일을 선택해주세요.');
       return;
     }
+    if (payload.contentsCart && payload.contentsCart.split(',').filter(function (x) { return String(x || '').trim(); }).length > DELIVERY_CONTENTS_MAX_COUNT) {
+      alert('카트는 최대 10개까지 입력 가능합니다.');
+      return;
+    }
+    if (payload.contentsMaterial && payload.contentsMaterial.split(',').filter(function (x) { return String(x || '').trim(); }).length > DELIVERY_CONTENTS_MAX_COUNT) {
+      alert('자재는 최대 10개까지 입력 가능합니다.');
+      return;
+    }
 
     showLoading();
     google.script.run
@@ -1466,7 +1556,12 @@
   function loadDeliveryApprovals() {
     const dateFrom = String(document.getElementById('approveDateFrom').value || '').trim();
     const dateTo = String(document.getElementById('approveDateTo').value || '').trim();
-    const query = String(document.getElementById('approveSearchInput').value || '').trim();
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      alert('조회 시작일이 종료일보다 늦습니다. 날짜를 다시 확인해주세요.');
+      return;
+    }
+    const searchKey = String(document.getElementById('approveSearchKey').value || 'originPart').trim();
+    const searchValue = String(document.getElementById('approveSearchInput').value || '').trim();
     const status = 'APPLY';
 
     const container = document.getElementById('deliveryApproveResults');
@@ -1502,7 +1597,8 @@
       .getDeliveryApprovalList({
         dateFrom: dateFrom,
         dateTo: dateTo,
-        query: query,
+        searchKey: searchKey,
+        searchValue: searchValue,
         status: status
       });
   }
@@ -1603,6 +1699,17 @@
     return category || '-';
   }
 
+  function formatCommaSeparatedForDetail(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '-';
+    const items = raw
+      .split(',')
+      .map(function (x) { return String(x || '').trim(); })
+      .filter(function (x) { return x; });
+    if (items.length === 0) return '-';
+    return items.map(function (x) { return escapeHtml(x); }).join('<br>');
+  }
+
   function escapeHtml(text) {
     return String(text || '')
       .replace(/&/g, '&amp;')
@@ -1613,8 +1720,13 @@
   }
 
   function loadDeliveryList() {
-    const date = String(document.getElementById('deliveryDateFilter').value || '').trim();
-    const searchKey = String(document.getElementById('deliverySearchKey').value || 'part').trim();
+    const dateFrom = String(document.getElementById('deliveryListDateFrom').value || '').trim();
+    const dateTo = String(document.getElementById('deliveryListDateTo').value || '').trim();
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      alert('조회 시작일이 종료일보다 늦습니다. 날짜를 다시 확인해주세요.');
+      return;
+    }
+    const searchKey = String(document.getElementById('deliverySearchKey').value || 'originPart').trim();
     const searchValue = String(document.getElementById('deliverySearchInput').value || '').trim();
     const status = String(document.getElementById('deliveryStatusFilter').value || 'ALL').trim();
 
@@ -1649,7 +1761,8 @@
           </div>`;
       })
       .getDeliveryList({
-        date: date,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
         searchKey: searchKey,
         searchValue: searchValue,
         status: status
@@ -1927,6 +2040,17 @@
     const driverDisplay = (driverName && driverName !== '-')
       ? `${escapeHtml(driverName)} (${driverPhoneHtml})`
       : '-';
+    const requesterName = String(item.requesterName || '-').trim();
+    const requesterPhoneRaw = String(item.requesterPhone || '').trim();
+    const requesterPhoneDigits = requesterPhoneRaw.replace(/[^0-9]/g, '');
+    const requesterPhoneHtml = requesterPhoneDigits
+      ? `<a href="tel:${requesterPhoneDigits}">${escapeHtml(requesterPhoneRaw)}</a>`
+      : (requesterPhoneRaw ? escapeHtml(requesterPhoneRaw) : '-');
+    const requesterDisplay = (requesterName && requesterName !== '-')
+      ? `${escapeHtml(requesterName)} (${requesterPhoneHtml})`
+      : '-';
+    const detailCartHtml = formatCommaSeparatedForDetail(item.contentsCart);
+    const detailMaterialHtml = formatCommaSeparatedForDetail(item.contentsMaterial);
 
     document.getElementById('deliveryApplySection').style.display = 'none';
     document.getElementById('deliveryApproveSection').style.display = 'none';
@@ -1992,11 +2116,11 @@
       </div>
       <div class="delivery-detail-row">
         <div class="delivery-detail-label">카트</div>
-        <div class="delivery-detail-value">${escapeHtml(item.contentsCart || '-')}</div>
+        <div class="delivery-detail-value">${detailCartHtml}</div>
       </div>
       <div class="delivery-detail-row">
         <div class="delivery-detail-label">자재</div>
-        <div class="delivery-detail-value">${escapeHtml(item.contentsMaterial || '-')}</div>
+        <div class="delivery-detail-value">${detailMaterialHtml}</div>
       </div>
       <div class="delivery-detail-row">
         <div class="delivery-detail-label">비고</div>
@@ -2016,7 +2140,7 @@
       </div>
       <div class="delivery-detail-row">
         <div class="delivery-detail-label">신청자</div>
-        <div class="delivery-detail-value">${escapeHtml(item.requesterName || '-')}</div>
+        <div class="delivery-detail-value">${requesterDisplay}</div>
       </div>
       <div class="delivery-detail-row">
         <div class="delivery-detail-label">담당 기사</div>

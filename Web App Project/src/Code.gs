@@ -35,7 +35,7 @@ function checkLogin(employeeId, password) {
     
     for (let i = 0; i < data.length; i++) {
       // A열: 사원번호, B열: 비밀번호
-      if (String(data[i][0]) === String(employeeId) && String(data[i][1]) === String(password)) {
+      if (String(data[i][0]) === String(employeeId) && verifyPassword_(password, data[i][1])) {
         const userName = data[i][2] || '사용자'; // C열: 이름
         const userPhone = String(data[i][3] || '').trim(); // D열: 연락처
         
@@ -59,7 +59,8 @@ function checkLogin(employeeId, password) {
           employeeId: String(data[i][0] || '').trim(),
           userPhone: userPhone,
           userName: userName, 
-          permissions: fullPermissions 
+          permissions: fullPermissions,
+          sessionToken: createSessionToken_(String(data[i][0] || '').trim(), userName, userPhone, fullPermissions)
         };
       }
     }
@@ -74,6 +75,11 @@ function checkLogin(employeeId, password) {
  */
 function updatePassword(employeeId, oldPassword, newPassword) {
   try {
+    const policy = validatePasswordPolicy_(newPassword);
+    if (!policy.valid) {
+      return { success: false, message: policy.message };
+    }
+
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheets()[0];
     const data = sheet.getDataRange().getValues();
@@ -82,9 +88,9 @@ function updatePassword(employeeId, oldPassword, newPassword) {
     for (let i = 0; i < data.length; i++) {
       // A열: 사원번호 (index 0), B열: 비밀번호 (index 1)
       if (String(data[i][0]) === String(employeeId)) {
-        if (String(data[i][1]) === String(oldPassword)) {
+        if (verifyPassword_(oldPassword, data[i][1])) {
           // 기존 비밀번호 일치: 새 비밀번호로 업데이트 (i는 0-index이므로 실제 행은 i+1, B열은 2번 열)
-          sheet.getRange(i + 1, 2).setValue(newPassword);
+          sheet.getRange(i + 1, 2).setValue(encodePassword_(newPassword));
           return { success: true, message: '비밀번호가 성공적으로 변경되었습니다.' };
         } else {
           return { success: false, message: '기존 비밀번호가 일치하지 않습니다.' };
@@ -104,6 +110,144 @@ const BS_SPREADSHEET_ID = '1uhkhWWBzvleJwKR_D-VAWXNWq7O3JwB4fib7vKZ52iY';
 const BRANCH_ADDRESS_SPREADSHEET_ID = '10vY7bq8AXW3XkimW-ibyOGh4LaWRCLaR1Df69Iy9Lt0';
 const DELIVERY_SPREADSHEET_ID = '1IiUSZmNSG8PCZJtyNPNqE1ZXByRIpHJSOeuX6X9H3qc';
 const BS_SERVICE_SHEETS = ['서비스1', '서비스2', '서비스3', '서비스4'];
+const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8시간
+const PASSWORD_HASH_PREFIX = 'sha256';
+
+function isAllowedFlag_(value) {
+  const v = String(value || '').trim().toLowerCase();
+  return v === 'o';
+}
+
+function hasDeliveryManagePermission_(permissions) {
+  if (!permissions || !permissions.delivery || !Array.isArray(permissions.delivery)) return false;
+  return permissions.delivery.some(function (p) { return isAllowedFlag_(p); });
+}
+
+function hasDriverPickupPermission_(permissions) {
+  return !!(permissions && permissions.driver && isAllowedFlag_(permissions.driver.pickup));
+}
+
+function hasDriverDeliveryPermission_(permissions) {
+  return !!(permissions && permissions.driver && isAllowedFlag_(permissions.driver.delivery));
+}
+
+function hasAnyDeliveryPermission_(permissions) {
+  return hasDeliveryManagePermission_(permissions) ||
+    hasDriverPickupPermission_(permissions) ||
+    hasDriverDeliveryPermission_(permissions);
+}
+
+function hasBsPermission_(permissions) {
+  if (!permissions || !permissions.bs || !Array.isArray(permissions.bs)) return false;
+  return permissions.bs.some(function (p) { return isAllowedFlag_(p); });
+}
+
+function createSessionToken_(employeeId, userName, userPhone, permissions) {
+  const token = Utilities.getUuid() + Utilities.getUuid();
+  const payload = {
+    employeeId: String(employeeId || '').trim(),
+    userName: String(userName || '').trim(),
+    userPhone: String(userPhone || '').trim(),
+    permissions: permissions || {},
+    createdAt: new Date().toISOString()
+  };
+  CacheService.getScriptCache().put('session:' + token, JSON.stringify(payload), SESSION_TTL_SECONDS);
+  return token;
+}
+
+function clearSessionToken_(sessionToken) {
+  const token = String(sessionToken || '').trim();
+  if (!token) return;
+  CacheService.getScriptCache().remove('session:' + token);
+}
+
+function toHex_(bytes) {
+  return bytes.map(function (b) {
+    const value = (b < 0) ? b + 256 : b;
+    return ('0' + value.toString(16)).slice(-2);
+  }).join('');
+}
+
+function hashPassword_(plainText, salt) {
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(salt || '') + '|' + String(plainText || ''),
+    Utilities.Charset.UTF_8
+  );
+  return toHex_(digest);
+}
+
+function encodePassword_(plainText) {
+  const salt = Utilities.getUuid().replace(/-/g, '');
+  const hash = hashPassword_(plainText, salt);
+  return PASSWORD_HASH_PREFIX + '$' + salt + '$' + hash;
+}
+
+function verifyPassword_(inputPassword, storedPassword) {
+  const input = String(inputPassword || '');
+  const stored = String(storedPassword || '');
+  const parts = stored.split('$');
+
+  if (parts.length === 3 && parts[0] === PASSWORD_HASH_PREFIX) {
+    const salt = parts[1];
+    const expected = parts[2];
+    return hashPassword_(input, salt) === expected;
+  }
+  // 레거시 평문 비밀번호 호환
+  return stored === input;
+}
+
+function validatePasswordPolicy_(password) {
+  const value = String(password || '');
+  const specialPattern = /[~`!@#$%^&*()_\-+={[}\]|\\:;"'<,>.?/]/;
+
+  if (value.length < 8 || value.length > 20) {
+    return { valid: false, message: '비밀번호는 8~20자로 입력해주세요.' };
+  }
+  if (/\s/.test(value)) {
+    return { valid: false, message: '비밀번호에는 공백을 사용할 수 없습니다.' };
+  }
+  if (!/[a-z]/.test(value)) {
+    return { valid: false, message: '비밀번호에 영어 소문자를 1자 이상 포함해주세요.' };
+  }
+  if (!/[0-9]/.test(value)) {
+    return { valid: false, message: '비밀번호에 숫자를 1자 이상 포함해주세요.' };
+  }
+  if (!specialPattern.test(value)) {
+    return { valid: false, message: '비밀번호에 특수문자를 1자 이상 포함해주세요.' };
+  }
+  return { valid: true, message: '' };
+}
+
+function getSessionData_(sessionToken) {
+  const token = String(sessionToken || '').trim();
+  if (!token) return null;
+  const raw = CacheService.getScriptCache().get('session:' + token);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function requireSession_(sessionToken) {
+  const token = String(sessionToken || '').trim();
+  const session = getSessionData_(sessionToken);
+  if (!session) return { success: false, message: '로그인 세션이 만료되었습니다. 다시 로그인해주세요.' };
+  // 호출 시점마다 TTL을 연장해 사용 중 세션 만료로 인한 오동작을 줄입니다.
+  CacheService.getScriptCache().put('session:' + token, JSON.stringify(session), SESSION_TTL_SECONDS);
+  return { success: true, session: session };
+}
+
+function logout(sessionToken) {
+  try {
+    clearSessionToken_(sessionToken);
+    return { success: true };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
 
 /**
  * BS 시트 데이터 로딩 헬퍼
@@ -137,8 +281,12 @@ function getBsSheetData(part) {
 /**
  * 영업점 주소록 검색 및 연관된 BS 데이터 집계
  */
-function searchBranchAddress(keyword, part) {
+function searchBranchAddress(sessionToken, keyword, part) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { error: auth.message };
+    if (!isAllowedFlag_(auth.session.permissions.address)) return { error: '영업점 주소록 권한이 없습니다.' };
+
     const addressSs = SpreadsheetApp.openById(BRANCH_ADDRESS_SPREADSHEET_ID);
     const addressSheet = addressSs.getSheets()[0];
     const addressData = addressSheet.getDataRange().getValues();
@@ -275,8 +423,12 @@ function calculateBranchStats(targetBranchName, allDataSets) {
 /**
  * BS 및 리워크 검색 (시트명 기반)
  */
-function searchBS(keyword, part) {
+function searchBS(sessionToken, keyword, part) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { error: auth.message };
+    if (!hasBsPermission_(auth.session.permissions)) return { error: 'BS 조회 권한이 없습니다.' };
+
     if (!keyword) return [];
 
     const bsSheets = getBsSheetData(part);
@@ -309,8 +461,12 @@ function searchBS(keyword, part) {
 /**
  * 마스터 통계 조회 (시트명 기반)
  */
-function getMasterStats(masterName, part) {
+function getMasterStats(sessionToken, masterName, part) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { error: auth.message };
+    if (!hasBsPermission_(auth.session.permissions)) return { error: 'BS 조회 권한이 없습니다.' };
+
     const bsSheets = getBsSheetData(part);
     
     let regularTotal = 0, regularCompleted = 0;
@@ -390,8 +546,12 @@ function getMasterStats(masterName, part) {
 /**
  * 메모 저장 (시트명 기반 - 전체 시트 검색)
  */
-function saveMemo(vin, memo) {
+function saveMemo(sessionToken, vin, memo) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasBsPermission_(auth.session.permissions)) return { success: false, message: '메모 저장 권한이 없습니다.' };
+
     const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
     const targetVin = String(vin).trim();
 
@@ -415,8 +575,12 @@ function saveMemo(vin, memo) {
 /**
  * 점검 완료 처리 (시트명 기반 - 전체 시트 검색)
  */
-function markAsComplete(vin, memo, processTypes) {
+function markAsComplete(sessionToken, vin, memo, processTypes) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasBsPermission_(auth.session.permissions)) return { success: false, message: '점검 완료 처리 권한이 없습니다.' };
+
     const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
     const today = Utilities.formatDate(new Date(), "GMT+9", "yyyy-MM-dd");
     const targetVin = String(vin).trim();
@@ -492,8 +656,12 @@ function normalizeText(value) {
 /**
  * 배차 신청용 파트별 영업점 옵션 조회
  */
-function getDeliveryBranchOptionsByPart(part) {
+function getDeliveryBranchOptionsByPart(sessionToken, part) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message, items: [] };
+    if (!hasAnyDeliveryPermission_(auth.session.permissions)) return { success: false, message: '배차 기능 권한이 없습니다.', items: [] };
+
     const selectedPart = String(part || '').trim();
     if (!selectedPart) return { success: true, items: [] };
 
@@ -628,8 +796,12 @@ function getLoginUserLookup() {
 /**
  * 배차 목록 조회
  */
-function getDeliveryList(filters) {
+function getDeliveryList(sessionToken, filters) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message, items: [] };
+    if (!hasAnyDeliveryPermission_(auth.session.permissions)) return { success: false, message: '배차 목록 조회 권한이 없습니다.', items: [] };
+
     const filter = filters || {};
     const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
     const sheet = ss.getSheets()[0];
@@ -776,15 +948,19 @@ function getDeliveryList(filters) {
 /**
  * 승인 대기/승인 목록 조회
  */
-function getDeliveryApprovalList(filters) {
+function getDeliveryApprovalList(sessionToken, filters) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message, items: [] };
+    if (!hasDeliveryManagePermission_(auth.session.permissions)) return { success: false, message: '배차 승인 권한이 없습니다.', items: [] };
+
     const filter = filters || {};
     const dateFrom = String(filter.dateFrom || '').trim();
     const dateTo = String(filter.dateTo || '').trim();
     const searchKey = String(filter.searchKey || 'originPart').trim();
     const searchValue = String(filter.searchValue || '').trim();
 
-    return getDeliveryList({
+    return getDeliveryList(sessionToken, {
       dateFrom: dateFrom,
       dateTo: dateTo,
       searchKey: searchKey,
@@ -800,12 +976,16 @@ function getDeliveryApprovalList(filters) {
  * 기사 회수 탭 조회
  * 조건: 배차승인 상태
  */
-function getDriverPickupList(filters) {
+function getDriverPickupList(sessionToken, filters) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message, items: [] };
+    if (!hasDriverPickupPermission_(auth.session.permissions)) return { success: false, message: '기사 회수 권한이 없습니다.', items: [] };
+
     const filter = filters || {};
     const dateFrom = String(filter.dateFrom || '').trim();
     const dateTo = String(filter.dateTo || '').trim();
-    const res = getDeliveryList({ status: 'APPROVED' });
+    const res = getDeliveryList(sessionToken, { status: 'APPROVED' });
     if (!res || !res.success) return { success: false, message: '회수 목록 조회 실패', items: [] };
 
     const items = (res.items || []).filter(function (item) {
@@ -826,15 +1006,19 @@ function getDriverPickupList(filters) {
  * 기사 배송관리 탭 조회
  * 조건: 이동 중 + 본인이 회수 처리한 건
  */
-function getDriverDeliveryList(filters) {
+function getDriverDeliveryList(sessionToken, filters) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message, items: [] };
+    if (!hasDriverDeliveryPermission_(auth.session.permissions)) return { success: false, message: '기사 배송 권한이 없습니다.', items: [] };
+
     const filter = filters || {};
     const dateFrom = String(filter.dateFrom || '').trim();
     const dateTo = String(filter.dateTo || '').trim();
-    const empName = String(filter.employeeName || '').trim();
+    const empName = String(auth.session.userName || '').trim();
     if (!empName) return { success: false, message: '기사 계정 정보가 없습니다.', items: [] };
 
-    const res = getDeliveryList({ status: 'MOVING' });
+    const res = getDeliveryList(sessionToken, { status: 'MOVING' });
     if (!res || !res.success) return { success: false, message: '배송 목록 조회 실패', items: [] };
 
     const items = (res.items || []).filter(function (item) {
@@ -856,10 +1040,15 @@ function getDriverDeliveryList(filters) {
  * 기사 회수 처리
  * 배차승인 -> 이동 중
  */
-function markDeliveryInTransit(rowNo, employeeId, employeeName) {
+function markDeliveryInTransit(sessionToken, rowNo) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasDriverPickupPermission_(auth.session.permissions)) return { success: false, message: '기사 회수 권한이 없습니다.' };
+
     const rowIndex = Number(rowNo);
-    const empName = String(employeeName || '').trim();
+    const empId = String(auth.session.employeeId || '').trim();
+    const empName = String(auth.session.userName || '').trim();
     if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
     if (!empName) return { success: false, message: '기사 계정 정보가 없습니다.' };
 
@@ -872,7 +1061,7 @@ function markDeliveryInTransit(rowNo, employeeId, employeeName) {
 
     const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
     sheet.getRange(rowIndex, 17).setValue('이동 중'); // Q
-    sheet.getRange(rowIndex, 18).setValue(empName); // R
+    sheet.getRange(rowIndex, 18).setValue(empId || empName); // R (사번 우선 저장)
     sheet.getRange(rowIndex, 19).setValue(now); // S
 
     return { success: true, message: '회수 처리되었습니다.', status: '이동 중', pickupAt: now };
@@ -885,10 +1074,15 @@ function markDeliveryInTransit(rowNo, employeeId, employeeName) {
  * 기사 배송완료 처리
  * 이동 중 -> 배송완료
  */
-function markDeliveryCompleted(rowNo, employeeName) {
+function markDeliveryCompleted(sessionToken, rowNo) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasDriverDeliveryPermission_(auth.session.permissions)) return { success: false, message: '기사 배송 권한이 없습니다.' };
+
     const rowIndex = Number(rowNo);
-    const empName = String(employeeName || '').trim();
+    const empId = String(auth.session.employeeId || '').trim();
+    const empName = String(auth.session.userName || '').trim();
     if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
     if (!empName) return { success: false, message: '기사 계정 정보가 없습니다.' };
 
@@ -900,7 +1094,7 @@ function markDeliveryCompleted(rowNo, employeeName) {
     }
 
     const pickupEmpName = String(sheet.getRange(rowIndex, 18).getValue() || '').trim(); // R
-    if (pickupEmpName && pickupEmpName !== empName) {
+    if (pickupEmpName && pickupEmpName !== empName && pickupEmpName !== empId) {
       return { success: false, message: '본인이 회수한 항목만 배송완료 처리할 수 있습니다.' };
     }
 
@@ -917,13 +1111,21 @@ function markDeliveryCompleted(rowNo, employeeName) {
 /**
  * 배차 승인 처리
  */
-function approveDeliveryRequest(rowNo) {
+function approveDeliveryRequest(sessionToken, rowNo) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasDeliveryManagePermission_(auth.session.permissions)) return { success: false, message: '배차 승인 권한이 없습니다.' };
+
     const rowIndex = Number(rowNo);
     if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
 
     const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
     const sheet = ss.getSheets()[0];
+    const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
+    if (currentStatus !== '배차신청') {
+      return { success: false, message: '배차신청 상태에서만 승인할 수 있습니다.' };
+    }
     const today = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd');
 
     sheet.getRange(rowIndex, 15).setValue(today); // O
@@ -939,8 +1141,12 @@ function approveDeliveryRequest(rowNo) {
  * 배차 취소 처리
  * 배차신청 -> 배차취소
  */
-function cancelDeliveryRequest(rowNo) {
+function cancelDeliveryRequest(sessionToken, rowNo) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasDeliveryManagePermission_(auth.session.permissions)) return { success: false, message: '배차 취소 권한이 없습니다.' };
+
     const rowIndex = Number(rowNo);
     if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
 
@@ -961,8 +1167,12 @@ function cancelDeliveryRequest(rowNo) {
 /**
  * 배차 신청 저장
  */
-function saveDeliveryApply(payload) {
+function saveDeliveryApply(sessionToken, payload) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasAnyDeliveryPermission_(auth.session.permissions)) return { success: false, message: '배차 신청 권한이 없습니다.' };
+
     if (!payload) return { success: false, message: '데이터가 없습니다.' };
 
     const requesterName = String(payload.requesterName || '').trim();
@@ -1026,8 +1236,12 @@ function saveDeliveryApply(payload) {
   }
 }
 
-function lookupBarcode(barcode) {
+function lookupBarcode(sessionToken, barcode) {
   try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { found: false, error: auth.message };
+    if (!hasBsPermission_(auth.session.permissions)) return { found: false, error: '바코드 조회 권한이 없습니다.' };
+
     const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
     const sheet = ss.getSheetByName('차대정보');
     if (!sheet) return { success: false };

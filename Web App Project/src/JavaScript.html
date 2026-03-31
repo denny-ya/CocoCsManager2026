@@ -64,13 +64,17 @@
     document.getElementById('loginView').style.display = 'block';
     document.getElementById('changePwView').style.display = 'none';
     document.getElementById('mainView').style.display = 'none';
+    resetChangePasswordForm();
   }
 
   function showChangePassword() {
+    resetChangePasswordForm();
     document.getElementById('authWrapper').style.display = 'flex';
     document.getElementById('loginView').style.display = 'none';
     document.getElementById('changePwView').style.display = 'block';
     document.getElementById('mainView').style.display = 'none';
+    updatePasswordPolicyChecklist();
+    updateChangePwMatchHint();
   }
 
   function showMain(userName) {
@@ -100,12 +104,12 @@
   const GUIDE_EMBED_URL = 'https://docs.google.com/presentation/d/1gbsH7E3HobsTIs3K8xRW1g-Oz6GI05005VeyNhshSAI/embed?start=false&loop=false&delayms=0';
 
   const MENU_ITEMS = [
-    { id: 'bs', title: 'BS 및 리워크', desc: '검색을 통한 업무 조회', icon: 'search', color: '#0051A2', action: () => showBsSearchView() },
-    { id: 'address', title: '영업점 주소록', desc: '전국 영업점 및 지사 연락처', icon: 'location_on', color: '#E65100', action: () => showBranchAddressView() },
-    { id: 'parts', title: '부품 탈거 관리', desc: '회수 부품 및 탈거 정보 관리', icon: 'handyman', color: '#2E7D32' },
+    { id: 'bs', title: 'BS 및 리워크', desc: '검색 및 점검 처리', icon: 'search', color: '#0051A2', action: () => showBsSearchView() },
+    { id: 'address', title: '영업점 주소록', desc: '전국 영업점 주소 및 연락처', icon: 'location_on', color: '#E65100', action: () => showBranchAddressView() },
+    { id: 'parts', title: '부품 탈거 관리', desc: '부품 탈거 및 회수 부품 이력 관리', icon: 'handyman', color: '#2E7D32' },
     { id: 'delivery', title: '배차 관리', desc: '실시간 배차 및 이동 현황', icon: 'local_shipping', color: '#6A1B9A', action: () => showDeliveryView() },
-    { id: 'stats', title: '실적 통계', desc: '일일/주간 실적 및 목표량', icon: 'bar_chart', color: '#1565C0' },
-    { id: 'guide', title: '업무 가이드', desc: '웹앱 업무 절차 전산매뉴얼', icon: 'menu_book', color: '#00838F', action: () => showGuideView() }
+    { id: 'stats', title: '실적 통계', desc: '일일/주간 AS 및 BS 실적', icon: 'bar_chart', color: '#1565C0' },
+    { id: 'guide', title: '업무 가이드', desc: 'CS팀 업무 매뉴얼', icon: 'menu_book', color: '#00838F', action: () => showGuideView() }
   ];
 
   function showGuideView() {
@@ -207,6 +211,7 @@
 
   // ── BS 검색 관련 로직 ──
   let userPermissions = null; // 모든 메뉴 권한 객체
+  let currentSessionToken = '';
   let currentUserEmpId = '';
   let currentUserName = '';
   let currentUserPhone = '';
@@ -214,6 +219,51 @@
   let currentBsMasterPart = '';
   let currentVinForComplete = '';
   let currentAddressPart = ''; // 영업점 주소록용 파트 보관
+  const LOGIN_STORAGE_EMP_ID_KEY = 'coco_login_emp_id';
+  const LOGIN_STORAGE_PASSWORD_KEY = 'coco_login_password';
+
+  function clearAuthState() {
+    userPermissions = null;
+    currentSessionToken = '';
+    currentUserEmpId = '';
+    currentUserName = '';
+    currentUserPhone = '';
+  }
+
+  function ensureSessionToken() {
+    if (!currentSessionToken) {
+      clearAuthState();
+      alert('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+      showLogin();
+      return false;
+    }
+    return true;
+  }
+
+  function getMemoElementId(vin) {
+    return 'memo_' + encodeURIComponent(String(vin || ''));
+  }
+
+  function loadRememberedLoginInfo() {
+    const empIdEl = document.getElementById('empId');
+    const pwEl = document.getElementById('pw');
+    const rememberEmpIdEl = document.getElementById('rememberEmpId');
+    const rememberPasswordEl = document.getElementById('rememberPassword');
+    if (!empIdEl || !pwEl || !rememberEmpIdEl || !rememberPasswordEl) return;
+
+    const savedEmpId = localStorage.getItem(LOGIN_STORAGE_EMP_ID_KEY) || '';
+    const savedPassword = localStorage.getItem(LOGIN_STORAGE_PASSWORD_KEY) || '';
+    const hasSavedEmpId = !!savedEmpId;
+    const hasSavedPassword = !!savedPassword;
+
+    rememberEmpIdEl.checked = hasSavedEmpId;
+    rememberPasswordEl.checked = hasSavedPassword;
+    if (hasSavedEmpId) empIdEl.value = savedEmpId;
+    if (hasSavedPassword) {
+      pwEl.value = savedPassword;
+      rememberEmpIdEl.checked = true;
+    }
+  }
 
   function showBranchAddressView() {
     // 재진입 시 항상 검색 상태 초기화
@@ -325,6 +375,7 @@
   }
 
   function handleAddressSearch() {
+    if (!ensureSessionToken()) return;
     const keyword = document.getElementById('addressSearchInput').value.trim();
     if (!keyword) { alert('영업점 이름을 입력해주세요.'); return; }
 
@@ -357,7 +408,7 @@
             <p>서버 조회 중 오류가 발생했습니다.<br>${err}</p>
           </div>`;
       })
-      .searchBranchAddress(keyword, currentAddressPart);
+      .searchBranchAddress(currentSessionToken, keyword, currentAddressPart);
   }
 
   function renderBranchAddressResults(results, keyword) {
@@ -373,10 +424,12 @@
     }
 
     if (!results || results.length === 0) {
+      const safePart = escapeHtml(currentAddressPart || '전체');
+      const safeKeyword = escapeHtml(keyword);
       container.innerHTML = `
         <div class="empty-state">
           <span class="material-icons">location_off</span>
-          <p>분류 '<b>${currentAddressPart || '전체'}</b>'에 해당하는<br>'<b>${keyword}</b>' 검색결과가 없습니다.</p>
+          <p>분류 '<b>${safePart}</b>'에 해당하는<br>'<b>${safeKeyword}</b>' 검색결과가 없습니다.</p>
         </div>`;
       return;
     }
@@ -384,14 +437,20 @@
     let html = '';
 
     results.forEach(branch => {
+      const safeBranchName = escapeHtml(branch.name);
+      const safeAddress = escapeHtml(branch.address);
+      const safeTel = escapeHtml(branch.tel);
+      const safeManagerTel = escapeHtml(branch.managerTel);
+      const telDigits = String(branch.tel || '').replace(/[^0-9]/g, '');
+      const managerTelDigits = String(branch.managerTel || '').replace(/[^0-9]/g, '');
       // 차량 리스트 생성 도우미
       const getListHtml = (list, isRework) => {
         if (!list || list.length === 0) return '';
         return list.map(item => `
-          <div class="vehicle-item" onclick="executeBSearchFromAddress('${item.vin}')" style="background: white; border-radius: 4px; padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e0e0e0; cursor: pointer;">
+          <div class="vehicle-item" onclick="executeBSearchFromAddress(decodeURIComponent('${encodeURIComponent(item.vin || '')}'))" style="background: white; border-radius: 4px; padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e0e0e0; cursor: pointer;">
             <div class="vehicle-info" style="display: flex; align-items: center; gap: 8px;">
-              <span class="badge" style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; ${isRework ? 'background: #e3f2fd; color: #1976d2;' : 'background: #f5f5f5; color: #757575;'}">${item.cartVersion || '무관'}</span>
-              <span class="vin-text" style="font-size: 13px; font-weight: 500; color: #333;">${item.vin}</span>
+              <span class="badge" style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; ${isRework ? 'background: #e3f2fd; color: #1976d2;' : 'background: #f5f5f5; color: #757575;'}">${escapeHtml(item.cartVersion || '무관')}</span>
+              <span class="vin-text" style="font-size: 13px; font-weight: 500; color: #333;">${escapeHtml(item.vin)}</span>
             </div>
             <div class="status-icon">
               ${item.completed
@@ -409,14 +468,14 @@
         <div class="card branch-card" style="margin-bottom:20px;">
           <div class="branch-card-header">
             <span class="material-icons header-icon">storefront</span>
-            <h3>${branch.name}</h3>
+            <h3>${safeBranchName}</h3>
           </div>
           
           <div class="branch-info-row">
             <span class="info-label">주소</span>
             <span class="info-content address-content">
-               ${branch.address}
-               <button class="icon-btn-small" onclick="copyToClipboard('${branch.address}')" style="border:none;background:none;color:#757575;cursor:pointer;padding:0;">
+               ${safeAddress}
+               <button class="icon-btn-small" onclick="copyToClipboard(decodeURIComponent('${encodeURIComponent(branch.address || '')}'))" style="border:none;background:none;color:#757575;cursor:pointer;padding:0;">
                  <span class="material-icons" style="font-size:16px;">launch</span>
                </button>
             </span>
@@ -424,18 +483,18 @@
           
           <div class="branch-info-row">
             <span class="info-label">영업점 번호</span>
-            <span class="info-content"><a href="tel:${branch.tel}">${branch.tel}</a></span>
+            <span class="info-content"><a href="tel:${telDigits}">${safeTel}</a></span>
           </div>
           
           <div class="branch-info-row">
             <span class="info-label">점장 번호</span>
-            <span class="info-content"><a href="tel:${branch.managerTel}">${branch.managerTel}</a></span>
+            <span class="info-content"><a href="tel:${managerTelDigits}">${safeManagerTel}</a></span>
           </div>
           
           <div class="branch-stats-section">
             <div class="stats-header">
               <span class="material-icons" style="font-size:16px;">assignment</span>
-              <span>${branch.name} 작업 현황</span>
+              <span>${safeBranchName} 작업 현황</span>
             </div>
             
             <div class="total-progress" style="margin-bottom:12px;">
@@ -477,7 +536,7 @@
           </div>
         </div>
         <a href="https://map.naver.com/v5/search/${encodeURIComponent(branch.address)}" target="_blank" class="btn-naver" style="display: block; text-decoration: none; margin-top: 10px; margin-bottom: 20px; width: 100%; box-sizing: border-box; text-align: center;">
-          <span style="vertical-align: middle;">네이버 지도 앱 열기${results.length > 1 ? ` (${branch.name})` : ''}</span>
+          <span style="vertical-align: middle;">네이버 지도 앱 열기${results.length > 1 ? ` (${safeBranchName})` : ''}</span>
         </a>
       `;
     });
@@ -628,6 +687,7 @@
   // 차대번호 검색
   function handleBsSearch() {
     try {
+      if (!ensureSessionToken()) return;
       const keyword = document.getElementById('bsVinInput').value.trim();
       if (!keyword) { alert('차대번호를 입력해주세요.'); return; }
 
@@ -644,7 +704,7 @@
           hideLoading();
           alert('검색 중 오류 발생: ' + err);
         })
-        .searchBS(keyword, currentBsPart);
+        .searchBS(currentSessionToken, keyword, currentBsPart);
     } catch (e) {
       hideLoading();
       alert('검색 실행 중 오류: ' + e.message);
@@ -684,6 +744,18 @@
       const isRework = item.bsTarget && item.bsTarget.includes('리워크');
       const isTarget = item.bsTarget === 'O' || isRework;
       const isNonTarget = item.bsTarget === 'X';
+      const safeVin = escapeHtml(item.vin);
+      const safeCartVersion = escapeHtml(item.cartVersion);
+      const safeBranch = escapeHtml(item.branch);
+      const safeSalesOffice = escapeHtml(item.salesOffice);
+      const safeSalesPoint = escapeHtml(item.salesPoint);
+      const safeDistrict = escapeHtml(item.district || '-');
+      const safeMaster = escapeHtml(item.master);
+      const safeManufactureDate = escapeHtml(item.manufactureDate);
+      const safeMemo = escapeHtml(item.memo || '');
+      const safeDisposalTarget = escapeHtml(item.disposalTarget || '');
+      const safeExclusionReason = escapeHtml(item.exclusionReason || '');
+      const memoId = getMemoElementId(item.vin);
 
       let badgesHtml = '<div class="status-badges-container">';
 
@@ -717,7 +789,7 @@
       if (item.disposalTarget && item.disposalTarget.trim()) {
         badgesHtml += `
           <div class="status-badge" style="background:#f3e5f5; color:#6a1b9a; border:1px solid #ce93d8; margin-bottom:8px; display:block; text-align:center; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:600;">
-            <span class="material-icons" style="font-size:18px; vertical-align:middle; margin-right:6px;">delete</span>폐기: ${item.disposalTarget}
+            <span class="material-icons" style="font-size:18px; vertical-align:middle; margin-right:6px;">delete</span>폐기: ${safeDisposalTarget}
           </div>`;
       }
 
@@ -726,7 +798,7 @@
       // 제외사유Badge
       let exclusionHtml = item.exclusionReason ? `
         <div class="status-badge" style="background:#f5f5f5; color:#777; margin-bottom:12px; display:block; text-align:center;">
-          <span class="material-icons" style="font-size:16px; vertical-align:middle; margin-right:4px;">remove_circle</span>제외: ${item.exclusionReason}
+          <span class="material-icons" style="font-size:16px; vertical-align:middle; margin-right:4px;">remove_circle</span>제외: ${safeExclusionReason}
         </div>` : '';
 
       // 영업점 작업 현황 요약 카드
@@ -736,7 +808,7 @@
         summaryHtml = `
           <div class="summary-box">
             <div class="summary-title">
-              <span class="material-icons" style="font-size:16px; margin-right:4px;">store</span> ${item.salesPoint} 작업 현황
+              <span class="material-icons" style="font-size:16px; margin-right:4px;">store</span> ${safeSalesPoint} 작업 현황
             </div>
             <div class="summary-grid">
               <div>
@@ -761,25 +833,25 @@
       card.innerHTML = `
         ${badgesHtml}
         ${exclusionHtml}
-        <div class="info-row"><span class="info-label">차대번호</span><span class="info-value bold">${item.vin}</span></div>
-        <div class="info-row"><span class="info-label">카트버전</span><span class="info-value">${item.cartVersion}</span></div>
-        <div class="info-row"><span class="info-label">지점/영업소</span><span class="info-value">${item.branch} / ${item.salesOffice}</span></div>
-        <div class="info-row"><span class="info-label">영업점</span><span class="info-value">${item.salesPoint}</span></div>
-        <div class="info-row"><span class="info-label">지구</span><span class="info-value">${item.district || '-'}</span></div>
-        <div class="info-row"><span class="info-label">마스터</span><span class="info-value">${item.master}</span></div>
-        <div class="info-row"><span class="info-label">제조일</span><span class="info-value">${item.manufactureDate}</span></div>
+        <div class="info-row"><span class="info-label">차대번호</span><span class="info-value bold">${safeVin}</span></div>
+        <div class="info-row"><span class="info-label">카트버전</span><span class="info-value">${safeCartVersion}</span></div>
+        <div class="info-row"><span class="info-label">지점/영업소</span><span class="info-value">${safeBranch} / ${safeSalesOffice}</span></div>
+        <div class="info-row"><span class="info-label">영업점</span><span class="info-value">${safeSalesPoint}</span></div>
+        <div class="info-row"><span class="info-label">지구</span><span class="info-value">${safeDistrict}</span></div>
+        <div class="info-row"><span class="info-label">마스터</span><span class="info-value">${safeMaster}</span></div>
+        <div class="info-row"><span class="info-label">제조일</span><span class="info-value">${safeManufactureDate}</span></div>
 
         <div class="memo-box">
           <div class="memo-title"><span class="material-icons" style="font-size:14px; vertical-align:middle;">edit_note</span> 비고 / 메모</div>
-          <textarea id="memo_${item.vin}" class="memo-textarea" placeholder="메모를 입력하세요...">${item.memo || ''}</textarea>
+          <textarea id="${memoId}" class="memo-textarea" placeholder="메모를 입력하세요...">${safeMemo}</textarea>
           <div style="text-align:right;">
-             <button class="save-memo-btn" onclick="saveMemoLocal('${item.vin}')">저장하기</button>
+             <button class="save-memo-btn" onclick="saveMemoLocal(decodeURIComponent('${encodeURIComponent(item.vin || '')}'))">저장하기</button>
           </div>
         </div>
         
         ${summaryHtml}
         
-        ${!isCompleted ? `<button class="complete-action-btn" style="margin-top: 10px;" onclick="openCompleteModal('${item.vin}')">점검 완료 처리</button>` : ''}
+        ${!isCompleted ? `<button class="complete-action-btn" style="margin-top: 10px;" onclick="openCompleteModal(decodeURIComponent('${encodeURIComponent(item.vin || '')}'))">점검 완료 처리</button>` : ''}
       `;
       container.appendChild(card);
     });
@@ -787,6 +859,7 @@
 
   // 마스터 통계 검색
   function handleMasterStatsSearch() {
+    if (!ensureSessionToken()) return;
     const masterName = document.getElementById('bsMasterInput').value.trim();
     if (!masterName) { alert('마스터 이름을 입력해주세요.'); return; }
 
@@ -800,7 +873,7 @@
         hideLoading();
         alert('조회 중 오류 발생: ' + err);
       })
-      .getMasterStats(masterName, currentBsMasterPart);
+      .getMasterStats(currentSessionToken, masterName, currentBsMasterPart);
   }
 
   /**
@@ -896,7 +969,8 @@
 
   // 메모 저장
   function saveMemoLocal(vin) {
-    const memo = document.getElementById('memo_' + vin).value;
+    const memoEl = document.getElementById(getMemoElementId(vin));
+    const memo = memoEl ? memoEl.value : '';
     if (!memo) {
       CustomConfirm('비어있는 메모를 저장하시겠습니까?', function (isOk) {
         if (!isOk) return;
@@ -908,6 +982,7 @@
   }
 
   function executeSaveMemoLocal(vin, memo) {
+    if (!ensureSessionToken()) return;
     showLoading();
     google.script.run
       .withSuccessHandler(function (res) {
@@ -918,7 +993,7 @@
         hideLoading();
         alert('저장 실패: ' + err);
       })
-      .saveMemo(vin, memo);
+      .saveMemo(currentSessionToken, vin, memo);
   }
 
   // 완료 처리 모달
@@ -940,7 +1015,9 @@
   }
 
   function executeComplete() {
-    const memo = document.getElementById('memo_' + currentVinForComplete).value;
+    if (!ensureSessionToken()) return;
+    const memoEl = document.getElementById(getMemoElementId(currentVinForComplete));
+    const memo = memoEl ? memoEl.value : '';
     const processTypes = {
       inspection: document.getElementById('checkInspection').checked,
       replace: document.getElementById('checkReplace').checked,
@@ -975,7 +1052,7 @@
         hideLoading();
         alert('처리 실패: ' + err);
       })
-      .markAsComplete(currentVinForComplete, memo, processTypes);
+      .markAsComplete(currentSessionToken, currentVinForComplete, memo, processTypes);
   }
 
   function handleLogin() {
@@ -992,7 +1069,32 @@
       .withSuccessHandler(function (result) {
         hideLoading();
         if (result.success) {
+          const rememberEmpIdEl = document.getElementById('rememberEmpId');
+          const rememberPasswordEl = document.getElementById('rememberPassword');
+          let rememberEmpId = !!(rememberEmpIdEl && rememberEmpIdEl.checked);
+          const rememberPassword = !!(rememberPasswordEl && rememberPasswordEl.checked);
+
+          if (rememberPassword && !rememberEmpId) {
+            rememberEmpId = true;
+            if (rememberEmpIdEl) rememberEmpIdEl.checked = true;
+          }
+
+          if (rememberEmpId) {
+            localStorage.setItem(LOGIN_STORAGE_EMP_ID_KEY, empId);
+          } else {
+            localStorage.removeItem(LOGIN_STORAGE_EMP_ID_KEY);
+            localStorage.removeItem(LOGIN_STORAGE_PASSWORD_KEY);
+            if (rememberPasswordEl) rememberPasswordEl.checked = false;
+          }
+
+          if (rememberPassword && rememberEmpId) {
+            localStorage.setItem(LOGIN_STORAGE_PASSWORD_KEY, pw);
+          } else {
+            localStorage.removeItem(LOGIN_STORAGE_PASSWORD_KEY);
+          }
+
           userPermissions = result.permissions || [];
+          currentSessionToken = String(result.sessionToken || '').trim();
           currentUserEmpId = String(result.employeeId || '').trim();
           currentUserName = String(result.userName || '').trim();
           currentUserPhone = String(result.userPhone || '').trim();
@@ -1008,6 +1110,78 @@
       .checkLogin(empId, pw);
   }
 
+  function validatePasswordPolicyClient(password) {
+    const value = String(password || '');
+    const specialPattern = /[~`!@#$%^&*()_\-+={[}\]|\\:;"'<,>.?/]/;
+
+    if (value.length < 8 || value.length > 20) {
+      return { valid: false, message: '비밀번호는 8~20자로 입력해주세요.' };
+    }
+    if (/\s/.test(value)) {
+      return { valid: false, message: '비밀번호에는 공백을 사용할 수 없습니다.' };
+    }
+    if (!/[a-z]/.test(value)) {
+      return { valid: false, message: '비밀번호에 영어 소문자를 1자 이상 포함해주세요.' };
+    }
+    if (!/[0-9]/.test(value)) {
+      return { valid: false, message: '비밀번호에 숫자를 1자 이상 포함해주세요.' };
+    }
+    if (!specialPattern.test(value)) {
+      return { valid: false, message: '비밀번호에 특수문자를 1자 이상 포함해주세요.' };
+    }
+    return { valid: true, message: '' };
+  }
+
+  function resetChangePasswordForm() {
+    const ids = ['changeEmpId', 'oldPw', 'newPw', 'confirmPw'];
+    ids.forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+
+    const hintEl = document.getElementById('changePwMatchHint');
+    if (hintEl) {
+      hintEl.className = 'password-match-hint neutral';
+      hintEl.innerText = '새 비밀번호를 다시 입력해주세요.';
+    }
+
+    const checklistItems = [
+      { id: 'policyLen', text: '8~20자' },
+      { id: 'policyLower', text: '영어 소문자 포함' },
+      { id: 'policyDigit', text: '숫자 포함' },
+      { id: 'policySpecial', text: '특수문자 포함' }
+    ];
+    checklistItems.forEach(function (item) {
+      const el = document.getElementById(item.id);
+      if (!el) return;
+      el.className = 'policy-item bad';
+      el.innerText = '✗ ' + item.text;
+    });
+  }
+
+  function updatePasswordPolicyChecklist() {
+    const newPwEl = document.getElementById('newPw');
+    if (!newPwEl) return;
+
+    const value = String(newPwEl.value || '');
+    const checks = {
+      policyLen: value.length >= 8 && value.length <= 20,
+      policyLower: /[a-z]/.test(value),
+      policyDigit: /[0-9]/.test(value),
+      policySpecial: /[~`!@#$%^&*()_\-+={[}\]|\\:;"'<,>.?/]/.test(value)
+    };
+
+    Object.keys(checks).forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const ok = checks[id];
+      el.className = 'policy-item ' + (ok ? 'ok' : 'bad');
+      if (el.innerText) {
+        el.innerText = (ok ? '✓ ' : '✗ ') + el.innerText.replace(/^[✓✗]\s*/, '');
+      }
+    });
+  }
+
   function handleChangePassword() {
     const empId = document.getElementById('changeEmpId').value;
     const oldPw = document.getElementById('oldPw').value;
@@ -1021,6 +1195,12 @@
 
     if (newPw !== confirmPw) {
       alert('새 비밀번호와 확인 비밀번호가 일치하지 않습니다.');
+      return;
+    }
+
+    const policy = validatePasswordPolicyClient(newPw);
+    if (!policy.valid) {
+      alert(policy.message);
       return;
     }
 
@@ -1042,19 +1222,61 @@
       .updatePassword(empId, oldPw, newPw);
   }
 
+  function updateChangePwMatchHint() {
+    const newPwEl = document.getElementById('newPw');
+    const confirmPwEl = document.getElementById('confirmPw');
+    const hintEl = document.getElementById('changePwMatchHint');
+    if (!newPwEl || !confirmPwEl || !hintEl) return;
+
+    const newPw = String(newPwEl.value || '');
+    const confirmPw = String(confirmPwEl.value || '');
+
+    hintEl.className = 'password-match-hint';
+    if (!newPw && !confirmPw) {
+      hintEl.classList.add('neutral');
+      hintEl.innerText = '새 비밀번호를 다시 입력해주세요.';
+      return;
+    }
+    if (!confirmPw) {
+      hintEl.classList.add('neutral');
+      hintEl.innerText = '비밀번호 확인을 입력해주세요.';
+      return;
+    }
+    if (newPw === confirmPw) {
+      hintEl.classList.add('ok');
+      hintEl.innerText = '새 비밀번호와 일치합니다.';
+      return;
+    }
+    hintEl.classList.add('bad');
+    hintEl.innerText = '새 비밀번호와 일치하지 않습니다.';
+  }
+
+  function setupChangePasswordHint() {
+    const newPwEl = document.getElementById('newPw');
+    const confirmPwEl = document.getElementById('confirmPw');
+    if (newPwEl) {
+      newPwEl.addEventListener('input', updateChangePwMatchHint);
+      newPwEl.addEventListener('input', updatePasswordPolicyChecklist);
+    }
+    if (confirmPwEl) confirmPwEl.addEventListener('input', updateChangePwMatchHint);
+    updatePasswordPolicyChecklist();
+    updateChangePwMatchHint();
+  }
+
   /**
    * 로그아웃
    */
   function handleLogout() {
     CustomConfirm('로그아웃 하시겠습니까?', function (isOk) {
       if (!isOk) return;
-      userPermissions = null;
-      currentUserEmpId = '';
-      currentUserName = '';
-      currentUserPhone = '';
+      const tokenToClear = currentSessionToken;
+      clearAuthState();
       showLogin();
       // 히스토리 초기화 (선택 사항)
       history.replaceState({ view: 'login' }, 'Login');
+      if (tokenToClear) {
+        google.script.run.logout(tokenToClear);
+      }
     });
   }
 
@@ -1108,7 +1330,9 @@
 
   // 초기 실행
   window.onload = function () {
+    loadRememberedLoginInfo();
     setupEnterKey();
+    setupChangePasswordHint();
     // 초기 히스토리 상태 설정
     history.replaceState({ view: 'login' }, 'Login');
   };
@@ -1417,6 +1641,7 @@
   }
 
   function handleDeliveryPartChange(type) {
+    if (!ensureSessionToken()) return;
     const domMap = getDeliveryDomMap(type);
     const partEl = document.getElementById(domMap.partId);
     const branchEl = document.getElementById(domMap.branchId);
@@ -1448,7 +1673,7 @@
         hideLoading();
         alert('영업점 목록 조회 실패: ' + err);
       })
-      .getDeliveryBranchOptionsByPart(selectedPart);
+      .getDeliveryBranchOptionsByPart(currentSessionToken, selectedPart);
   }
 
   function renderDeliveryBranchOptions(branchEl, items) {
@@ -1481,6 +1706,7 @@
   }
 
   function submitDeliveryApply() {
+    if (!ensureSessionToken()) return;
     const contentsCart = collectDeliveryContents('cart');
     const contentsMaterial = collectDeliveryContents('material');
     const payload = {
@@ -1550,10 +1776,11 @@
         hideLoading();
         alert('배차 신청 저장 실패: ' + err);
       })
-      .saveDeliveryApply(payload);
+      .saveDeliveryApply(currentSessionToken, payload);
   }
 
   function loadDeliveryApprovals() {
+    if (!ensureSessionToken()) return;
     const dateFrom = String(document.getElementById('approveDateFrom').value || '').trim();
     const dateTo = String(document.getElementById('approveDateTo').value || '').trim();
     if (dateFrom && dateTo && dateFrom > dateTo) {
@@ -1594,7 +1821,7 @@
             <p>메뉴 조회 실패: ${escapeHtml(err)}</p>
           </div>`;
       })
-      .getDeliveryApprovalList({
+      .getDeliveryApprovalList(currentSessionToken, {
         dateFrom: dateFrom,
         dateTo: dateTo,
         searchKey: searchKey,
@@ -1720,6 +1947,7 @@
   }
 
   function loadDeliveryList() {
+    if (!ensureSessionToken()) return;
     const dateFrom = String(document.getElementById('deliveryListDateFrom').value || '').trim();
     const dateTo = String(document.getElementById('deliveryListDateTo').value || '').trim();
     if (dateFrom && dateTo && dateFrom > dateTo) {
@@ -1760,7 +1988,7 @@
             <p>배차 목록 조회 실패: ${escapeHtml(err)}</p>
           </div>`;
       })
-      .getDeliveryList({
+      .getDeliveryList(currentSessionToken, {
         dateFrom: dateFrom,
         dateTo: dateTo,
         searchKey: searchKey,
@@ -1820,6 +2048,7 @@
   }
 
   function loadDeliveryPickupList() {
+    if (!ensureSessionToken()) return;
     const dateFrom = String(document.getElementById('deliveryPickupDateFrom').value || '').trim();
     const dateTo = String(document.getElementById('deliveryPickupDateTo').value || '').trim();
     if (dateFrom && dateTo && dateFrom > dateTo) {
@@ -1856,13 +2085,14 @@
             <p>회수 목록 조회 실패: ${escapeHtml(err)}</p>
           </div>`;
       })
-      .getDriverPickupList({
+      .getDriverPickupList(currentSessionToken, {
         dateFrom: dateFrom,
         dateTo: dateTo
       });
   }
 
   function loadDeliveryDriverList() {
+    if (!ensureSessionToken()) return;
     const dateFrom = String(document.getElementById('deliveryDriverDateFrom').value || '').trim();
     const dateTo = String(document.getElementById('deliveryDriverDateTo').value || '').trim();
     if (dateFrom && dateTo && dateFrom > dateTo) {
@@ -1899,10 +2129,9 @@
             <p>배송 목록 조회 실패: ${escapeHtml(err)}</p>
           </div>`;
       })
-      .getDriverDeliveryList({
+      .getDriverDeliveryList(currentSessionToken, {
         dateFrom: dateFrom,
-        dateTo: dateTo,
-        employeeName: currentUserName
+        dateTo: dateTo
       });
   }
 
@@ -1959,6 +2188,7 @@
   }
 
   function markPickupInTransit(rowNo) {
+    if (!ensureSessionToken()) return;
     showLoading();
     google.script.run
       .withSuccessHandler(function (res) {
@@ -1976,10 +2206,11 @@
         hideLoading();
         alert('회수 처리 실패: ' + err);
       })
-      .markDeliveryInTransit(rowNo, currentUserEmpId, currentUserName);
+      .markDeliveryInTransit(currentSessionToken, rowNo);
   }
 
   function markDriverDeliveryComplete(rowNo) {
+    if (!ensureSessionToken()) return;
     showLoading();
     google.script.run
       .withSuccessHandler(function (res) {
@@ -1997,7 +2228,7 @@
         hideLoading();
         alert('배송완료 처리 실패: ' + err);
       })
-      .markDeliveryCompleted(rowNo, currentUserName);
+      .markDeliveryCompleted(currentSessionToken, rowNo);
   }
 
   function openDeliveryDetail(rowNo) {
@@ -2185,6 +2416,7 @@
   function approveDelivery(rowNo) {
     CustomConfirm('배차를 승인하시겠습니까?', function (isOk) {
       if (!isOk) return;
+      if (!ensureSessionToken()) return;
 
       showLoading();
       google.script.run
@@ -2211,13 +2443,14 @@
           hideLoading();
           alert('승인 처리 중 오류 발생: ' + err);
         })
-      .approveDeliveryRequest(rowNo);
+      .approveDeliveryRequest(currentSessionToken, rowNo);
     });
   }
 
   function cancelDelivery(rowNo) {
     CustomConfirm('정말로 배차를 취소하시겠습니까?\n취소 후에는 복구할 수 없습니다.', function (isOk) {
       if (!isOk) return;
+      if (!ensureSessionToken()) return;
 
       showLoading();
       google.script.run
@@ -2240,7 +2473,7 @@
           hideLoading();
           alert('배차취소 처리 중 오류 발생: ' + err);
         })
-        .cancelDeliveryRequest(rowNo);
+        .cancelDeliveryRequest(currentSessionToken, rowNo);
     });
   }
 
@@ -2367,6 +2600,10 @@
    * 서버에 바코드 매칭 요청
    */
   function callLookupBarcode(barcode, input) {
+    if (!ensureSessionToken()) {
+      input.value = "";
+      return;
+    }
     google.script.run
       .withSuccessHandler(function (res) {
         hideLoading();
@@ -2383,6 +2620,7 @@
         input.value = "";
         alert("바코드 조회 중 오류가 발생했습니다: " + err);
       })
-      .lookupBarcode(barcode);
+      .lookupBarcode(currentSessionToken, barcode);
   }
 </script>
+

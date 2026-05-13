@@ -39,7 +39,7 @@ function checkLogin(employeeId, password) {
         const userName = data[i][2] || '사용자'; // C열: 이름
         const userPhone = String(data[i][3] || '').trim(); // D열: 연락처
         
-        // E~Q열: 모든 메뉴 권한 정보 (D열 연락처 추가로 +1 이동)
+        // E~R열: 모든 메뉴 권한 정보 (D열 연락처 추가로 +1 이동)
         const fullPermissions = {
           bs: [data[i][4], data[i][5], data[i][6], data[i][7]], // E~H (서비스1~4)
           address: data[i][8], // I
@@ -50,7 +50,8 @@ function checkLogin(employeeId, password) {
           driver: {            // P~Q
             pickup: data[i][15],   // P: 기사 회수
             delivery: data[i][16]  // Q: 기사 배송
-          }
+          },
+          installInfo: data[i][17] // R: 부품 장착 정보
         };
         
         return { 
@@ -140,6 +141,10 @@ function hasAnyDeliveryPermission_(permissions) {
 function hasBsPermission_(permissions) {
   if (!permissions || !permissions.bs || !Array.isArray(permissions.bs)) return false;
   return permissions.bs.some(function (p) { return isAllowedFlag_(p); });
+}
+
+function hasInstallInfoPermission_(permissions) {
+  return !!(permissions && isAllowedFlag_(permissions.installInfo));
 }
 
 function createSessionToken_(employeeId, userName, userPhone, permissions) {
@@ -454,6 +459,43 @@ function searchBS(sessionToken, keyword, part) {
     return results.slice(0, 30);
   } catch (e) {
     console.error('searchBS error: ' + e.toString());
+    return { error: e.toString() };
+  }
+}
+
+/**
+ * 부품 장착 정보 검색 (시트명 기반)
+ */
+function searchInstallInfo(sessionToken, keyword) {
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { error: auth.message };
+    if (!hasInstallInfoPermission_(auth.session.permissions)) return { error: '부품 장착 정보 조회 권한이 없습니다.' };
+
+    if (!keyword) return [];
+
+    const bsSheets = getBsSheetData('');
+    const results = [];
+    const searchStr = String(keyword).trim().toUpperCase();
+
+    bsSheets.forEach(function(sheetObj) {
+      const data = sheetObj.data;
+      for (let i = 4; i < data.length; i++) {
+        const row = data[i];
+        const vin = String(row[1] || '').trim().toUpperCase();
+        const barcodeVin = String(row[21] || '').trim().toUpperCase();
+
+        if (vin.includes(searchStr) || barcodeVin.includes(searchStr)) {
+          const vehicle = mapRowToVehicleData(row, i + 1);
+          vehicle.sourceSheet = sheetObj.sheetName;
+          results.push(vehicle);
+        }
+      }
+    });
+
+    return results.slice(0, 30);
+  } catch (e) {
+    console.error('searchInstallInfo error: ' + e.toString());
     return { error: e.toString() };
   }
 }

@@ -83,6 +83,8 @@
     document.getElementById('bsSearchView').style.display = 'none';
     document.getElementById('branchAddressView').style.display = 'none';
     document.getElementById('deliveryView').style.display = 'none';
+    const iv = document.getElementById('installInfoView');
+    if (iv) iv.style.display = 'none';
     const gv = document.getElementById('guideView');
     if (gv) {
       gv.style.display = 'none';
@@ -107,6 +109,7 @@
     { id: 'bs', title: 'BS 및 리워크', desc: '검색 및 점검 처리', icon: 'search', color: '#0051A2', action: () => showBsSearchView() },
     { id: 'address', title: '영업점 주소록', desc: '전국 영업점 주소 및 연락처', icon: 'location_on', color: '#E65100', action: () => showBranchAddressView() },
     { id: 'parts', title: '부품 탈거 관리', desc: '부품 탈거 및 회수 부품 이력 관리', icon: 'handyman', color: '#2E7D32' },
+    { id: 'installInfo', title: '부품 장착 정보', desc: '카트 주요 부품의 장착 정보', icon: 'precision_manufacturing', color: '#455A64', action: () => showInstallInfoView() },
     { id: 'delivery', title: '배차 관리', desc: '실시간 배차 및 이동 현황', icon: 'local_shipping', color: '#6A1B9A', action: () => showDeliveryView() },
     { id: 'stats', title: '실적 통계', desc: '일일/주간 AS 및 BS 실적', icon: 'bar_chart', color: '#1565C0' },
     { id: 'guide', title: '업무 가이드', desc: 'CS팀 업무 매뉴얼', icon: 'menu_book', color: '#00838F', action: () => showGuideView() }
@@ -117,6 +120,8 @@
     document.getElementById('bsSearchView').style.display = 'none';
     document.getElementById('branchAddressView').style.display = 'none';
     document.getElementById('deliveryView').style.display = 'none';
+    const iv = document.getElementById('installInfoView');
+    if (iv) iv.style.display = 'none';
     const gv = document.getElementById('guideView');
     if (gv) gv.style.display = 'flex';
     const gf = document.getElementById('guideFrame');
@@ -230,6 +235,32 @@
     currentUserPhone = '';
   }
 
+  function showInstallInfoView() {
+    const inputEl = document.getElementById('installInfoInput');
+    const resultsEl = document.getElementById('installInfoResults');
+    if (inputEl) inputEl.value = '';
+    if (resultsEl) {
+      resultsEl.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">manage_search</span>
+          <p>차대번호를 입력하고 검색해주세요</p>
+        </div>`;
+    }
+
+    document.getElementById('mainView').style.display = 'none';
+    document.getElementById('bsSearchView').style.display = 'none';
+    document.getElementById('branchAddressView').style.display = 'none';
+    document.getElementById('deliveryView').style.display = 'none';
+    const gv = document.getElementById('guideView');
+    if (gv) gv.style.display = 'none';
+    const iv = document.getElementById('installInfoView');
+    if (iv) iv.style.display = 'block';
+
+    if (history.state?.view !== 'installInfo') {
+      history.pushState({ view: 'installInfo' }, 'Install Info');
+    }
+  }
+
   function ensureSessionToken() {
     if (!currentSessionToken) {
       clearAuthState();
@@ -286,6 +317,8 @@
     document.getElementById('mainView').style.display = 'none';
     document.getElementById('branchAddressView').style.display = 'block';
     document.getElementById('deliveryView').style.display = 'none';
+    const iv = document.getElementById('installInfoView');
+    if (iv) iv.style.display = 'none';
 
     if (history.state?.view !== 'branchAddress') {
       history.pushState({ view: 'branchAddress' }, 'Branch Address');
@@ -595,6 +628,8 @@
     document.getElementById('mainView').style.display = 'none';
     document.getElementById('bsSearchView').style.display = 'block';
     document.getElementById('deliveryView').style.display = 'none';
+    const iv = document.getElementById('installInfoView');
+    if (iv) iv.style.display = 'none';
 
     // 뒤로가기용 히스토리 추가
     if (history.state?.view !== 'bsSearch') {
@@ -1110,6 +1145,73 @@
       .checkLogin(empId, pw);
   }
 
+  function handleInstallInfoSearch() {
+    if (!ensureSessionToken()) return;
+    const keyword = String((document.getElementById('installInfoInput') || {}).value || '').trim();
+    if (!keyword) {
+      alert('차대번호를 입력해주세요.');
+      return;
+    }
+
+    const container = document.getElementById('installInfoResults');
+    if (container) {
+      container.innerHTML = '<div class="empty-state"><p>조회 중...</p></div>';
+    }
+
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function (results) {
+        hideLoading();
+        renderInstallInfoResults(results);
+      })
+      .withFailureHandler(function (err) {
+        hideLoading();
+        alert('검색 중 오류 발생: ' + err);
+      })
+      .searchInstallInfo(currentSessionToken, keyword);
+  }
+
+  function renderInstallInfoResults(results) {
+    const container = document.getElementById('installInfoResults');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (results && results.error) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">warning</span>
+          <p>검색 오류: ${escapeHtml(results.error)}</p>
+        </div>
+      `;
+      return;
+    }
+
+    if (!results || !Array.isArray(results) || results.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="material-icons">search_off</span>
+          <p>검색 결과가 없습니다.</p>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '';
+    results.forEach(function (item) {
+      html += `
+        <div class="vehicle-card">
+          <div class="info-row"><span class="info-label">차대번호</span><span class="info-value bold">${escapeHtml(item.vin || '-')}</span></div>
+          <div class="info-row"><span class="info-label">카트버전</span><span class="info-value">${escapeHtml(item.cartVersion || '-')}</span></div>
+          <div class="info-row"><span class="info-label">부품구분</span><span class="info-value">${escapeHtml(item.part || '-')}</span></div>
+          <div class="info-row"><span class="info-label">영업점</span><span class="info-value">${escapeHtml(item.salesPoint || '-')}</span></div>
+          <div class="info-row"><span class="info-label">마스터</span><span class="info-value">${escapeHtml(item.master || '-')}</span></div>
+          <div class="info-row"><span class="info-label">조회시트</span><span class="info-value">${escapeHtml(item.sourceSheet || '-')}</span></div>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+  }
+
   function validatePasswordPolicyClient(password) {
     const value = String(password || '');
     const specialPattern = /[~`!@#$%^&*()_\-+={[}\]|\\:;"'<,>.?/]/;
@@ -1288,7 +1390,8 @@
       { id: 'empId', action: handleLogin },
       { id: 'pw', action: handleLogin },
       { id: 'bsVinInput', action: handleBsSearch },
-      { id: 'bsMasterInput', action: handleMasterStatsSearch }
+      { id: 'bsMasterInput', action: handleMasterStatsSearch },
+      { id: 'installInfoInput', action: handleInstallInfoSearch }
     ];
 
     inputs.forEach(item => {
@@ -1316,6 +1419,8 @@
         showBranchAddressView();
       } else if (event.state.view === 'delivery') {
         showDeliveryView();
+      } else if (event.state.view === 'installInfo') {
+        showInstallInfoView();
       } else if (event.state.view === 'guide') {
         showGuideView();
       } else if (event.state.view === 'login') {
@@ -1352,6 +1457,8 @@
     document.getElementById('bsSearchView').style.display = 'none';
     document.getElementById('branchAddressView').style.display = 'none';
     document.getElementById('deliveryView').style.display = 'block';
+    const iv = document.getElementById('installInfoView');
+    if (iv) iv.style.display = 'none';
 
     if (history.state?.view !== 'delivery') {
       history.pushState({ view: 'delivery' }, 'Delivery Management');
@@ -2504,10 +2611,14 @@
     document.getElementById('directBarcodeCamera').click();
   }
 
+  function triggerInstallInfoCamera() {
+    document.getElementById('installInfoBarcodeCamera').click();
+  }
+
   /**
    * 촬영된 사진에서 바코드 인식 (네이티브 BarcodeDetector 방식)
    */
-  function handleDirectBarcodeFile(input) {
+  function handleDirectBarcodeFile(input, onDetected) {
     if (input.files && input.files.length > 0) {
       const imageFile = input.files[0];
       showLoading();
@@ -2540,7 +2651,7 @@
           canvas.height = height;
           ctx.drawImage(img, 0, 0, width, height);
 
-          detectBarcodeFromCanvas(canvas, input);
+          detectBarcodeFromCanvas(canvas, input, onDetected);
         };
         img.src = e.target.result;
       };
@@ -2548,10 +2659,18 @@
     }
   }
 
+  function handleInstallInfoBarcodeFile(input) {
+    handleDirectBarcodeFile(input, function (vin) {
+      const installInput = document.getElementById('installInfoInput');
+      if (installInput) installInput.value = vin;
+      handleInstallInfoSearch();
+    });
+  }
+
   /**
    * 캔버스에서 바코드 검출 및 서버 조회
    */
-  function detectBarcodeFromCanvas(canvas, input) {
+  function detectBarcodeFromCanvas(canvas, input, onDetected) {
     // 1. BarcodeDetector API 지원 확인 (Chrome Android 등 프리미엄 환경)
     if ('BarcodeDetector' in window) {
       const detector = new BarcodeDetector({
@@ -2564,32 +2683,32 @@
             const barcode = barcodes[0].rawValue;
             console.log("Native Scan Success:", barcode);
             if (navigator.vibrate) navigator.vibrate(100);
-            callLookupBarcode(barcode, input);
+            callLookupBarcode(barcode, input, onDetected);
           } else {
             hideLoading();
-            handleScanFallback("바코드를 자동 인식할 수 없습니다.", input);
+            handleScanFallback("바코드를 자동 인식할 수 없습니다.", input, onDetected);
           }
         })
         .catch(err => {
           hideLoading();
           console.error("Native detector error:", err);
-          handleScanFallback("인식 오류가 발생했습니다.", input);
+          handleScanFallback("인식 오류가 발생했습니다.", input, onDetected);
         });
     } else {
       // 2. 미지원 환경 (iOS 등) 수동 입력 폴백
       hideLoading();
-      handleScanFallback("자동 인식이 지원되지 않는 브라우저입니다.", input);
+      handleScanFallback("자동 인식이 지원되지 않는 브라우저입니다.", input, onDetected);
     }
   }
 
   /**
    * 스캔 실패 또는 미지원 시 수동 입력 폴백
    */
-  function handleScanFallback(reason, input) {
+  function handleScanFallback(reason, input, onDetected) {
     CustomPrompt(`${reason}\n사진에 보이는 바코드 번호를 직접 입력해주세요:`, function (barcode) {
       if (barcode && barcode.trim()) {
         showLoading();
-        callLookupBarcode(barcode.trim(), input);
+        callLookupBarcode(barcode.trim(), input, onDetected);
       } else {
         input.value = "";
       }
@@ -2599,7 +2718,7 @@
   /**
    * 서버에 바코드 매칭 요청
    */
-  function callLookupBarcode(barcode, input) {
+  function callLookupBarcode(barcode, input, onDetected) {
     if (!ensureSessionToken()) {
       input.value = "";
       return;
@@ -2609,8 +2728,12 @@
         hideLoading();
         input.value = "";
         if (res.found) {
-          document.getElementById('bsVinInput').value = res.vin;
-          handleBsSearch(); // 자동 검색 실행
+          if (typeof onDetected === 'function') {
+            onDetected(res.vin);
+          } else {
+            document.getElementById('bsVinInput').value = res.vin;
+            handleBsSearch(); // 자동 검색 실행
+          }
         } else {
           alert(res.error || "등록되지 않은 바코드입니다.");
         }

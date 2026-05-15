@@ -1186,7 +1186,7 @@
       return;
     }
 
-    if (!results || !Array.isArray(results.items) || results.items.length === 0) {
+    if (!results || !Array.isArray(results) || results.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
           <span class="material-icons">search_off</span>
@@ -1196,42 +1196,16 @@
       return;
     }
 
-    let html = `
-      <div class="install-info-meta">
-        <div class="install-info-meta-row">
-          <div class="install-info-meta-label">기준일</div>
-          <div class="install-info-meta-value">${escapeHtml(results.searchedAt || '-')}</div>
-        </div>
-        <div class="install-info-meta-row">
-          <div class="install-info-meta-label">${escapeHtml(results.cartVersion || '-')}</div>
-          <div class="install-info-meta-value">${escapeHtml(results.vin || '-')}</div>
-        </div>
-      </div>
-    `;
-
-    results.items.forEach(function (item) {
-      const warrantyClass = String(item.warrantyType || '').trim() === '무상'
-        ? 'warranty-free'
-        : (String(item.warrantyType || '').trim() === '유상' ? 'warranty-paid' : '');
+    let html = '';
+    results.forEach(function (item) {
       html += `
-        <div class="install-part-block">
-          <div class="install-part-title">${escapeHtml(item.partName || '-')}</div>
-          <table class="install-part-table">
-            <thead>
-              <tr>
-                <th>장착일</th>
-                <th>사용일</th>
-                <th>유무상</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>${escapeHtml(item.installedDate || '-')}</td>
-                <td>${escapeHtml(item.usageDays || '-')}</td>
-                <td class="${warrantyClass}">${escapeHtml(item.warrantyType || '-')}</td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="vehicle-card">
+          <div class="info-row"><span class="info-label">차대번호</span><span class="info-value bold">${escapeHtml(item.vin || '-')}</span></div>
+          <div class="info-row"><span class="info-label">카트버전</span><span class="info-value">${escapeHtml(item.cartVersion || '-')}</span></div>
+          <div class="info-row"><span class="info-label">부품구분</span><span class="info-value">${escapeHtml(item.part || '-')}</span></div>
+          <div class="info-row"><span class="info-label">영업점</span><span class="info-value">${escapeHtml(item.salesPoint || '-')}</span></div>
+          <div class="info-row"><span class="info-label">마스터</span><span class="info-value">${escapeHtml(item.master || '-')}</span></div>
+          <div class="info-row"><span class="info-label">조회시트</span><span class="info-value">${escapeHtml(item.sourceSheet || '-')}</span></div>
         </div>
       `;
     });

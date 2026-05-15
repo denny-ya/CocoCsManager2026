@@ -110,7 +110,6 @@ function updatePassword(employeeId, oldPassword, newPassword) {
 const BS_SPREADSHEET_ID = '1uhkhWWBzvleJwKR_D-VAWXNWq7O3JwB4fib7vKZ52iY';
 const BRANCH_ADDRESS_SPREADSHEET_ID = '10vY7bq8AXW3XkimW-ibyOGh4LaWRCLaR1Df69Iy9Lt0';
 const DELIVERY_SPREADSHEET_ID = '1IiUSZmNSG8PCZJtyNPNqE1ZXByRIpHJSOeuX6X9H3qc';
-const INSTALL_INFO_SPREADSHEET_ID = '1rdWEaYLMLqVjluW6wkB48Xg54k6Cza_4od8IC7TpKeo';
 const BS_SERVICE_SHEETS = ['서비스1', '서비스2', '서비스3', '서비스4'];
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8시간
 const PASSWORD_HASH_PREFIX = 'sha256';
@@ -473,81 +472,28 @@ function searchInstallInfo(sessionToken, keyword) {
     if (!auth.success) return { error: auth.message };
     if (!hasInstallInfoPermission_(auth.session.permissions)) return { error: '부품 장착 정보 조회 권한이 없습니다.' };
 
-    const vinKeyword = normalizeLooseText_(keyword);
-    if (!vinKeyword) return { error: '차대번호를 입력해주세요.' };
+    if (!keyword) return [];
 
-    const ss = SpreadsheetApp.openById(INSTALL_INFO_SPREADSHEET_ID);
-    const cartSheet = ss.getSheetByName('카트 정보');
-    const warrantySheet = ss.getSheetByName('부품보증기간');
-    const installSheet = ss.getSheetByName('부품 장착 정보');
-    if (!cartSheet || !warrantySheet || !installSheet) {
-      return { error: '필수 시트를 찾을 수 없습니다. (카트 정보/부품보증기간/부품 장착 정보)' };
-    }
+    const bsSheets = getBsSheetData('');
+    const results = [];
+    const searchStr = String(keyword).trim().toUpperCase();
 
-    const cartValues = cartSheet.getDataRange().getValues();
-    const cartDisplayValues = cartSheet.getDataRange().getDisplayValues();
-    const warrantyValues = warrantySheet.getDataRange().getValues();
-    const warrantyDisplayValues = warrantySheet.getDataRange().getDisplayValues();
-    const installValues = installSheet.getDataRange().getValues();
-    const installDisplayValues = installSheet.getDataRange().getDisplayValues();
+    bsSheets.forEach(function(sheetObj) {
+      const data = sheetObj.data;
+      for (let i = 4; i < data.length; i++) {
+        const row = data[i];
+        const vin = String(row[1] || '').trim().toUpperCase();
+        const barcodeVin = String(row[21] || '').trim().toUpperCase();
 
-    const cartRow = findCartRowByVin_(cartValues, vinKeyword);
-    if (cartRow < 0) return { error: '해당 차대번호를 카트 정보에서 찾을 수 없습니다.' };
-
-    const cartVersion = String(cartDisplayValues[cartRow][2] || cartValues[cartRow][2] || '').trim();
-    const manufactureDate = formatDateSafe_(cartValues[cartRow][8], cartDisplayValues[cartRow][8]);
-    const baseDate = manufactureDate || '';
-
-    const normalizedVersion = normalizeLooseText_(cartVersion);
-    const partMap = buildPartWarrantyMap_(warrantyValues, warrantyDisplayValues, normalizedVersion);
-    const parts = Object.keys(partMap);
-    if (parts.length === 0) {
-      return { error: '부품보증기간 시트에서 카트 버전에 해당하는 부품 기준을 찾지 못했습니다.' };
-    }
-
-    const today = new Date();
-    const items = parts.map(function(partName) {
-      const fallbackInstalledDate = baseDate;
-      const fallbackUsageDays = calcDaysFromDateString_(fallbackInstalledDate, today);
-      const fallbackWarrantyDays = Number(partMap[partName] || 0);
-      const fallbackWarrantyType = decideWarrantyType_(fallbackUsageDays, fallbackWarrantyDays);
-
-      const matchedRow = findBestInstallRow_(installValues, installDisplayValues, vinKeyword, partName);
-      if (matchedRow < 0) {
-        return {
-          partName: partName,
-          installedDate: fallbackInstalledDate || '-',
-          usageDays: fallbackUsageDays >= 0 ? String(fallbackUsageDays) : '-',
-          warrantyType: fallbackWarrantyType,
-          rank: 0,
-          source: 'fallback'
-        };
+        if (vin.includes(searchStr) || barcodeVin.includes(searchStr)) {
+          const vehicle = mapRowToVehicleData(row, i + 1);
+          vehicle.sourceSheet = sheetObj.sheetName;
+          results.push(vehicle);
+        }
       }
-
-      const installedDate = formatDateSafe_(installValues[matchedRow][14], installDisplayValues[matchedRow][14]) || '-'; // O
-      const usageDaysNum = calcDaysFromDateString_(installedDate, today);
-      const usageDaysDisplay = usageDaysNum >= 0 ? String(usageDaysNum) : '-';
-      const warrantyDays = Number(partMap[partName] || 0);
-      const warrantyTypeDisplay = decideWarrantyType_(usageDaysNum, warrantyDays);
-      const rankNum = toNumberOrZero_(installValues[matchedRow][11]); // L
-
-      return {
-        partName: partName,
-        installedDate: installedDate,
-        usageDays: usageDaysDisplay,
-        warrantyType: warrantyTypeDisplay,
-        rank: rankNum,
-        source: 'install'
-      };
     });
 
-    return {
-      vin: String(cartDisplayValues[cartRow][1] || cartValues[cartRow][1] || '').trim(),
-      cartVersion: cartVersion || '-',
-      baseDate: baseDate || '-',
-      searchedAt: Utilities.formatDate(today, 'GMT+9', 'yyyy-MM-dd'),
-      items: items
-    };
+    return results.slice(0, 30);
   } catch (e) {
     console.error('searchInstallInfo error: ' + e.toString());
     return { error: e.toString() };
@@ -1336,120 +1282,19 @@ function lookupBarcode(sessionToken, barcode) {
   try {
     const auth = requireSession_(sessionToken);
     if (!auth.success) return { found: false, error: auth.message };
-    if (!hasBsPermission_(auth.session.permissions) && !hasInstallInfoPermission_(auth.session.permissions)) {
-      return { found: false, error: '바코드 조회 권한이 없습니다.' };
-    }
+    if (!hasBsPermission_(auth.session.permissions)) return { found: false, error: '바코드 조회 권한이 없습니다.' };
 
-    const ss = SpreadsheetApp.openById(INSTALL_INFO_SPREADSHEET_ID);
-    const sheet = ss.getSheetByName('카트 정보');
-    if (!sheet) return { found: false, error: '카트 정보 시트를 찾을 수 없습니다.' };
-    const data = sheet.getDataRange().getDisplayValues();
-    const search = normalizeLooseText_(barcode);
-    if (!search) return { found: false };
-
+    const ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('차대정보');
+    if (!sheet) return { success: false };
+    const data = sheet.getDataRange().getValues();
+    const search = String(barcode).trim();
     for (let i = 1; i < data.length; i++) {
-      const barcodeValue = normalizeLooseText_(data[i][0]); // A: 바코드
-      if (barcodeValue && barcodeValue === search) {
-        return { found: true, vin: String(data[i][1] || '').trim() }; // B: 차대번호
-      }
+      if (String(data[i][0]).trim() === search) return { found: true, vin: String(data[i][1]).trim() };
     }
     return { found: false };
   } catch (e) {
-    return { found: false, error: e.toString() };
+    return { found: false };
   }
-}
-
-function normalizeLooseText_(value) {
-  return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
-}
-
-function toNumberOrZero_(value) {
-  const n = Number(String(value || '').replace(/,/g, '').trim());
-  return isNaN(n) ? 0 : n;
-}
-
-function formatDateSafe_(rawValue, displayValue) {
-  if (rawValue instanceof Date) return Utilities.formatDate(rawValue, 'GMT+9', 'yyyy-MM-dd');
-  const display = String(displayValue || '').trim();
-  if (display) return display.substring(0, 10);
-  const raw = String(rawValue || '').trim();
-  return raw ? raw.substring(0, 10) : '';
-}
-
-function findCartRowByVin_(cartValues, vinKeyword) {
-  const keyword = normalizeLooseText_(vinKeyword);
-  if (!keyword) return -1;
-
-  // 1) 정확 일치 우선
-  for (let i = 1; i < cartValues.length; i++) {
-    const vin = normalizeLooseText_(cartValues[i][1]); // B
-    if (vin === keyword) return i;
-  }
-
-  // 2) 부분 일치
-  for (let i = 1; i < cartValues.length; i++) {
-    const vin = normalizeLooseText_(cartValues[i][1]); // B
-    if (!vin) continue;
-    if (vin.indexOf(keyword) !== -1) return i;
-    if (keyword.indexOf(vin) !== -1) return i;
-  }
-  return -1;
-}
-
-function buildPartWarrantyMap_(warrantyValues, warrantyDisplayValues, normalizedVersion) {
-  const partMap = {};
-  for (let i = 1; i < warrantyValues.length; i++) {
-    const versionCond = String(warrantyDisplayValues[i][0] || warrantyValues[i][0] || '').trim(); // A
-    const partName = String(warrantyDisplayValues[i][2] || warrantyValues[i][2] || '').trim(); // C
-    const warrantyDays = toNumberOrZero_(warrantyDisplayValues[i][3] || warrantyValues[i][3]); // D
-    if (!partName) continue;
-    if (!versionCond || !isCartVersionMatched_(versionCond, normalizedVersion)) continue;
-    if (!partMap[partName] || warrantyDays > partMap[partName]) {
-      partMap[partName] = warrantyDays;
-    }
-  }
-  return partMap;
-}
-
-function isCartVersionMatched_(versionCond, normalizedVersion) {
-  const tokens = String(versionCond || '').split(',').map(function(token) {
-    return normalizeLooseText_(token);
-  }).filter(function(token) { return !!token; });
-  if (tokens.length === 0) return false;
-  return tokens.indexOf(normalizedVersion) !== -1;
-}
-
-function findBestInstallRow_(installValues, installDisplayValues, vinKeyword, partName) {
-  const targetVin = normalizeLooseText_(vinKeyword);
-  const targetPart = normalizeLooseText_(partName);
-  let bestRow = -1;
-  let bestRank = -1;
-
-  for (let i = 1; i < installValues.length; i++) {
-    const vin = normalizeLooseText_(installDisplayValues[i][6] || installValues[i][6]); // G
-    const partUnified = normalizeLooseText_(installDisplayValues[i][9] || installValues[i][9]); // J
-    if (vin !== targetVin || partUnified !== targetPart) continue;
-
-    const rank = toNumberOrZero_(installDisplayValues[i][11] || installValues[i][11]); // L
-    if (rank > bestRank) {
-      bestRank = rank;
-      bestRow = i;
-    }
-  }
-  return bestRow;
-}
-
-function calcDaysFromDateString_(dateText, baseDate) {
-  const text = String(dateText || '').trim();
-  if (!text) return -1;
-  const parsed = new Date(text);
-  if (isNaN(parsed.getTime())) return -1;
-  const ms = baseDate.getTime() - parsed.getTime();
-  return ms < 0 ? 0 : Math.floor(ms / (1000 * 60 * 60 * 24));
-}
-
-function decideWarrantyType_(usageDays, warrantyDays) {
-  if (usageDays < 0 || warrantyDays <= 0) return '-';
-  return usageDays < warrantyDays ? '무상' : '유상';
 }
 

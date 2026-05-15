@@ -1,0 +1,32 @@
+<!-- 부품 장착 정보 화면 -->
+<div id="installInfoView" style="display: none;">
+  <div class="header-with-back">
+    <button class="icon-btn" onclick="showMainView()">
+      <span class="material-icons">arrow_back</span>
+    </button>
+    <h2 class="view-title">부품 장착 정보</h2>
+  </div>
+
+  <div class="bs-section">
+    <div class="search-box">
+      <div class="search-input-group">
+        <input type="text" id="installInfoInput" placeholder="차대번호 입력 (예: HYM322...)" onkeypress="if(event.key==='Enter') handleInstallInfoSearch()">
+        <button class="barcode-btn" onclick="triggerInstallInfoCamera()" title="바코드 촬영">
+          <span class="material-icons">photo_camera</span>
+        </button>
+        <input type="file" id="installInfoBarcodeCamera" accept="image/*" capture="environment" style="display:none"
+          onchange="handleInstallInfoBarcodeFile(this)">
+        <button class="search-btn" onclick="handleInstallInfoSearch()">
+          <span class="material-icons">search</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="installInfoResults" class="results-container">
+      <div class="empty-state">
+        <span class="material-icons">manage_search</span>
+        <p>차대번호를 입력하고 검색해주세요</p>
+      </div>
+    </div>
+  </div>
+</div>

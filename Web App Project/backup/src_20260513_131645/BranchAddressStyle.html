@@ -1,0 +1,155 @@
+<style>
+  /* 영업점 주소록 검색창 및 버튼용 추가 스타일 (BsSearchStyle 공통 요소를 재사용하되 일부 재조정) */
+
+  /* 주소록 전용 검색 버튼 스타일 (요청된 파란색 둥근 버튼 형태) */
+  .search-btn-address {
+    padding: 0 16px;
+    height: 48px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background-color: #0051A2; /* 테마 색상 적용 */
+    color: white;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: background-color 0.2s;
+    flex-shrink: 0; 
+  }
+
+  .search-btn-address .material-icons {
+    font-size: 24px;
+  }
+
+  .search-btn-address:active {
+    background-color: #003d7a;
+    transform: translateY(1px);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+  
+  /* 주소록 결과 카드 스타일 */
+  .branch-card-header {
+    display: flex;
+    align-items: center;
+    color: #0051A2;
+    margin-bottom: 12px;
+  }
+  .branch-card-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .branch-card-header .header-icon {
+    font-size: 20px;
+    margin-right: 8px;
+  }
+  
+  .branch-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+    word-break: keep-all;
+  }
+  .branch-info-row:last-of-type {
+    border-bottom: none;
+  }
+  .info-label {
+    color: #757575;
+    flex-shrink: 0;
+    margin-right: 12px;
+  }
+  .info-content {
+    color: #333;
+    font-weight: 500;
+    text-align: right;
+  }
+  .info-content a {
+    color: #007bff;
+    text-decoration: none;
+  }
+  .address-content {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    text-align: right;
+  }
+  
+  .branch-stats-section {
+    background-color: #f8f9fa;
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 16px;
+    margin-bottom: 16px;
+  }
+  .stats-header {
+    display: flex;
+    align-items: center;
+    color: #757575;
+    font-size: 13px;
+    margin-bottom: 16px;
+    gap: 4px;
+  }
+
+  /* 영업점 작업 현황 통계 박스 그리드 */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-box {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+  }
+
+  .btn-naver {
+    width: 100%;
+    padding: 14px;
+    background-color: #03c75a;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(3, 199, 90, 0.2);
+    margin-top: 12px;
+  }
+  .btn-naver .icon {
+    font-size: 18px;
+    margin-right: 8px;
+  }
+  .btn-naver:active {
+    background-color: #02b350;
+  }
+
+  /* 목록 스크롤 컨테이너 */
+  .address-vehicle-lists {
+    max-height: 250px;
+    overflow-y: auto;
+    margin-top: 16px;
+    padding-right: 4px;
+  }
+  .address-vehicle-lists::-webkit-scrollbar {
+    width: 6px;
+  }
+  .address-vehicle-lists::-webkit-scrollbar-track {
+    background: #f1f1f1; 
+    border-radius: 4px;
+  }
+  .address-vehicle-lists::-webkit-scrollbar-thumb {
+    background: #c1c1c1; 
+    border-radius: 4px;
+  }
+</style>

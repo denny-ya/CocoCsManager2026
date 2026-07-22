@@ -1,0 +1,100 @@
+<style>
+  .install-info-meta {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .install-info-meta-row {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 10px;
+  }
+
+  .install-info-meta-label,
+  .install-info-meta-value {
+    min-height: 40px;
+    border-radius: 8px;
+    border: 1px solid #274d8d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+
+  .install-info-meta-label {
+    background: #2f5aa6;
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .install-info-meta-value {
+    background: #fff;
+    color: #222;
+    font-weight: 500;
+  }
+
+  .install-part-block {
+    margin-top: 12px;
+  }
+
+  .install-part-title {
+    background: #2f5aa6;
+    color: #fff;
+    border-radius: 8px;
+    text-align: center;
+    padding: 9px 10px;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .install-part-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .install-part-table th,
+  .install-part-table td {
+    border: 1px solid #9aa4b2;
+    text-align: center;
+    padding: 8px 4px;
+    font-size: 16px;
+  }
+
+  .install-part-table th {
+    background: #c8d1df;
+    color: #111;
+    font-weight: 600;
+  }
+
+  .install-part-table td {
+    background: #fff;
+    color: #222;
+    font-weight: 500;
+  }
+
+  .install-part-table .warranty-free {
+    color: #204ecf;
+    font-weight: 800;
+  }
+
+  .install-part-table .warranty-paid {
+    color: #d62b2b;
+    font-weight: 800;
+  }
+
+  @media (max-width: 480px) {
+    .install-part-title {
+      font-size: 18px;
+    }
+
+    .install-part-table th,
+    .install-part-table td {
+      font-size: 15px;
+    }
+  }
+</style>

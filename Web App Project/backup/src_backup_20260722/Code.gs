@@ -1070,7 +1070,7 @@ function getDeliveryApprovalList(sessionToken, filters) {
 
 /**
  * 기사 회수 탭 조회
- * 조건: 배차신청/배차승인 상태 조회, 회수 처리는 배차승인만 가능
+ * 조건: 배차승인 상태
  */
 function getDriverPickupList(sessionToken, filters) {
   try {
@@ -1081,12 +1081,11 @@ function getDriverPickupList(sessionToken, filters) {
     const filter = filters || {};
     const dateFrom = String(filter.dateFrom || '').trim();
     const dateTo = String(filter.dateTo || '').trim();
-    const allowedPickupViewStatuses = ['배차신청', '배차승인'];
-    const res = getDeliveryList(sessionToken, { status: 'ALL' });
+    const res = getDeliveryList(sessionToken, { status: 'APPROVED' });
     if (!res || !res.success) return { success: false, message: '회수 목록 조회 실패', items: [] };
 
     const items = (res.items || []).filter(function (item) {
-      if (allowedPickupViewStatuses.indexOf(item.status) === -1) return false;
+      if (item.status !== '배차승인') return false;
       const targetDate = getDateOnly(item.searchDate);
       if (dateFrom && (!targetDate || targetDate < dateFrom)) return false;
       if (dateTo && (!targetDate || targetDate > dateTo)) return false;

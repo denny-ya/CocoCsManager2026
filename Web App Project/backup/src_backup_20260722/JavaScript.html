@@ -779,12 +779,6 @@
       const isRework = item.bsTarget && item.bsTarget.includes('리워크');
       const isTarget = item.bsTarget === 'O' || isRework;
       const isNonTarget = item.bsTarget === 'X';
-      const processLabels = [];
-      if (String(item.processInspection || '').trim().toUpperCase() === 'O') processLabels.push('점검');
-      if (String(item.processReplace || '').trim().toUpperCase() === 'O') processLabels.push('교체');
-      if (String(item.processTransfer || '').trim().toUpperCase() === 'O') processLabels.push('이관');
-      if (String(item.processDisposal || '').trim().toUpperCase() === 'O') processLabels.push('폐기');
-      const processSummaryText = processLabels.length > 0 ? processLabels.join(' / ') : '미기록';
       const safeVin = escapeHtml(item.vin);
       const safeCartVersion = escapeHtml(item.cartVersion);
       const safeBranch = escapeHtml(item.branch);
@@ -805,9 +799,6 @@
         badgesHtml += `
           <div class="status-badge badge-completed">
             <span class="material-icons" style="font-size:18px; vertical-align:middle; margin-right:6px;">verified</span>점검 완료 (${item.completedDate || '날짜미상'})
-          </div>
-          <div class="status-badge" style="background:#ED7D31; color:#fff;">
-            점검 결과 : ${escapeHtml(processSummaryText)}
           </div>`;
       } else if (isTarget) {
         badgesHtml += `
@@ -2303,10 +2294,6 @@
       const actionFn = actionType === 'pickup'
         ? `markPickupInTransit(${item.rowNo})`
         : `markDriverDeliveryComplete(${item.rowNo})`;
-      const canRunAction = actionType === 'complete' || item.status === '배차승인';
-      const actionHtml = canRunAction
-        ? `<button class="btn-delivery-approve-inline" style="width:100%; border-radius:8px;" onclick="event.stopPropagation(); ${actionFn};">${actionLabel}</button>`
-        : `<span class="delivery-readonly-badge">조회 전용</span>`;
 
       html += `
         <div class="delivery-list-item" onclick="openDeliveryDetail(${item.rowNo})">
@@ -2325,7 +2312,7 @@
             <div><strong>비고</strong> ${escapeHtml(note)}</div>
           </div>
           <div class="delivery-list-footer">
-            ${actionHtml}
+            <button class="btn-delivery-approve-inline" style="width:100%; border-radius:8px;" onclick="event.stopPropagation(); ${actionFn};">${actionLabel}</button>
           </div>
         </div>`;
     });

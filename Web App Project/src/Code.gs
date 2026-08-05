@@ -114,6 +114,16 @@ const INSTALL_INFO_SPREADSHEET_ID = '1rdWEaYLMLqVjluW6wkB48Xg54k6Cza_4od8IC7TpKe
 const BS_SERVICE_SHEETS = ['서비스1', '서비스2', '서비스3', '서비스4'];
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8시간
 const PASSWORD_HASH_PREFIX = 'sha256';
+const DELIVERY_CANCEL_HEADERS = [
+  '신청자사번',
+  '취소요청여부',
+  '취소요청일시',
+  '취소요청자사번',
+  '취소요청자명',
+  '취소승인일시',
+  '취소승인자사번',
+  '취소승인자명'
+];
 
 function isAllowedFlag_(value) {
   const v = String(value || '').trim().toLowerCase();
@@ -121,6 +131,11 @@ function isAllowedFlag_(value) {
 }
 
 function hasDeliveryManagePermission_(permissions) {
+  if (!permissions || !permissions.delivery || !Array.isArray(permissions.delivery)) return false;
+  return isAllowedFlag_(permissions.delivery[1]);
+}
+
+function hasDeliveryMenuPermission_(permissions) {
   if (!permissions || !permissions.delivery || !Array.isArray(permissions.delivery)) return false;
   return permissions.delivery.some(function (p) { return isAllowedFlag_(p); });
 }
@@ -134,7 +149,7 @@ function hasDriverDeliveryPermission_(permissions) {
 }
 
 function hasAnyDeliveryPermission_(permissions) {
-  return hasDeliveryManagePermission_(permissions) ||
+  return hasDeliveryMenuPermission_(permissions) ||
     hasDriverPickupPermission_(permissions) ||
     hasDriverDeliveryPermission_(permissions);
 }
@@ -484,18 +499,22 @@ function searchInstallInfo(sessionToken, keyword) {
       return { error: '필수 시트를 찾을 수 없습니다. (카트 정보/부품보증기간/부품 장착 정보)' };
     }
 
-    const cartValues = cartSheet.getDataRange().getValues();
-    const cartDisplayValues = cartSheet.getDataRange().getDisplayValues();
-    const warrantyValues = warrantySheet.getDataRange().getValues();
-    const warrantyDisplayValues = warrantySheet.getDataRange().getDisplayValues();
-    const installValues = installSheet.getDataRange().getValues();
-    const installDisplayValues = installSheet.getDataRange().getDisplayValues();
+    const cartLastRow = cartSheet.getLastRow();
+    if (cartLastRow < 2) return { error: '카트 정보 시트에 조회할 데이터가 없습니다.' };
 
-    const cartRow = findCartRowByVin_(cartValues, vinKeyword);
-    if (cartRow < 0) return { error: '해당 차대번호를 카트 정보에서 찾을 수 없습니다.' };
+    const cartRowCount = cartLastRow - 1;
+    const cartValues = cartSheet.getRange(2, 2, cartRowCount, 8).getValues(); // B~I
+    const cartDisplayValues = cartSheet.getRange(2, 2, cartRowCount, 8).getDisplayValues(); // B~I
+    const cartInfo = findCartInfoByVin_(cartValues, cartDisplayValues, vinKeyword);
+    if (!cartInfo) return { error: '해당 차대번호를 카트 정보에서 찾을 수 없습니다.' };
 
-    const cartVersion = String(cartDisplayValues[cartRow][2] || cartValues[cartRow][2] || '').trim();
-    const manufactureDate = formatDateSafe_(cartValues[cartRow][8], cartDisplayValues[cartRow][8]);
+    const warrantyLastRow = warrantySheet.getLastRow();
+    const warrantyValues = warrantyLastRow > 0 ? warrantySheet.getRange(1, 1, warrantyLastRow, 4).getValues() : []; // A~D
+    const warrantyDisplayValues = warrantyLastRow > 0 ? warrantySheet.getRange(1, 1, warrantyLastRow, 4).getDisplayValues() : []; // A~D
+
+    const resolvedVin = cartInfo.normalizedVin;
+    const cartVersion = cartInfo.cartVersion;
+    const manufactureDate = cartInfo.manufactureDate;
     const baseDate = manufactureDate || '';
 
     const normalizedVersion = normalizeLooseText_(cartVersion);
@@ -506,14 +525,15 @@ function searchInstallInfo(sessionToken, keyword) {
     }
 
     const today = new Date();
+    const installMap = buildBestInstallMapByVinFromSheet_(installSheet, resolvedVin || vinKeyword);
     const items = parts.map(function(partName) {
       const fallbackInstalledDate = baseDate;
       const fallbackUsageDays = calcDaysFromDateString_(fallbackInstalledDate, today);
       const fallbackWarrantyDays = Number(partMap[partName] || 0);
       const fallbackWarrantyType = decideWarrantyType_(fallbackUsageDays, fallbackWarrantyDays);
 
-      const matchedRow = findBestInstallRow_(installValues, installDisplayValues, vinKeyword, partName);
-      if (matchedRow < 0) {
+      const installInfo = installMap[normalizeLooseText_(partName)];
+      if (!installInfo) {
         return {
           partName: partName,
           installedDate: fallbackInstalledDate || '-',
@@ -524,25 +544,24 @@ function searchInstallInfo(sessionToken, keyword) {
         };
       }
 
-      const installedDate = formatDateSafe_(installValues[matchedRow][14], installDisplayValues[matchedRow][14]) || '-'; // O
+      const installedDate = installInfo.installedDate || '-';
       const usageDaysNum = calcDaysFromDateString_(installedDate, today);
       const usageDaysDisplay = usageDaysNum >= 0 ? String(usageDaysNum) : '-';
       const warrantyDays = Number(partMap[partName] || 0);
       const warrantyTypeDisplay = decideWarrantyType_(usageDaysNum, warrantyDays);
-      const rankNum = toNumberOrZero_(installValues[matchedRow][11]); // L
 
       return {
         partName: partName,
         installedDate: installedDate,
         usageDays: usageDaysDisplay,
         warrantyType: warrantyTypeDisplay,
-        rank: rankNum,
+        rank: installInfo.rank,
         source: 'install'
       };
     });
 
     return {
-      vin: String(cartDisplayValues[cartRow][1] || cartValues[cartRow][1] || '').trim(),
+      vin: cartInfo.vin || '-',
       cartVersion: cartVersion || '-',
       baseDate: baseDate || '-',
       searchedAt: Utilities.formatDate(today, 'GMT+9', 'yyyy-MM-dd'),
@@ -889,6 +908,25 @@ function getLoginUserLookup() {
   return { byName: byName, byEmpId: byEmpId };
 }
 
+function isSameEmployeeId_(left, right) {
+  const a = String(left || '').trim();
+  const b = String(right || '').trim();
+  return !!a && !!b && a === b;
+}
+
+function getDeliveryCancelRequestFlag_(value) {
+  return isAllowedFlag_(value);
+}
+
+function ensureDeliveryCancelColumns_(sheet) {
+  const range = sheet.getRange(1, 21, 1, DELIVERY_CANCEL_HEADERS.length); // U~AB
+  const current = range.getValues()[0];
+  const next = DELIVERY_CANCEL_HEADERS.map(function(header, index) {
+    return String(current[index] || '').trim() ? current[index] : header;
+  });
+  range.setValues([next]);
+}
+
 /**
  * 배차 목록 조회
  */
@@ -938,6 +976,14 @@ function getDeliveryList(sessionToken, filters) {
         pickupEmpName: String(row[17] || '').trim(), // R (담당기사명 또는 사번)
         pickupAt: formatDeliveryDateTime(row[18]), // S (회수일시)
         deliveryCompletedAt: formatDeliveryDateTime(row[19]), // T (배송완료일시)
+        requesterEmpId: String(row[20] || '').trim(), // U (신청자사번)
+        cancelRequested: getDeliveryCancelRequestFlag_(row[21]), // V (취소요청여부)
+        cancelRequestedAt: formatDeliveryDateTime(row[22]), // W (취소요청일시)
+        cancelRequesterEmpId: String(row[23] || '').trim(), // X
+        cancelRequesterName: String(row[24] || '').trim(), // Y
+        cancelApprovedAt: formatDeliveryDateTime(row[25]), // Z
+        cancelApproverEmpId: String(row[26] || '').trim(), // AA
+        cancelApproverName: String(row[27] || '').trim(), // AB
         requesterPhone: '', // 신청자 연락처
         driverPhone: '', // 로그인 계정 목록 D열(연락처) 매핑
         originTel: '', // 주소록 D열(영업점 번호)
@@ -987,7 +1033,9 @@ function getDeliveryList(sessionToken, filters) {
       }
 
       item.status = normalizeDeliveryStatus(row[16]);
-      if (item.status === '이동 중') {
+      if (item.status === '배차승인' && item.cancelRequested) {
+        item.searchDate = item.cancelRequestedAt || item.approvedDate || item.applyDate;
+      } else if (item.status === '이동 중') {
         item.searchDate = item.pickupAt || item.approvedDate || item.applyDate;
       } else if (item.status === '배송완료') {
         item.searchDate = item.deliveryCompletedAt || item.pickupAt || item.approvedDate || item.applyDate;
@@ -1055,14 +1103,27 @@ function getDeliveryApprovalList(sessionToken, filters) {
     const dateTo = String(filter.dateTo || '').trim();
     const searchKey = String(filter.searchKey || 'originPart').trim();
     const searchValue = String(filter.searchValue || '').trim();
+    const status = String(filter.status || 'APPROVAL_QUEUE').trim();
 
-    return getDeliveryList(sessionToken, {
+    const res = getDeliveryList(sessionToken, {
       dateFrom: dateFrom,
       dateTo: dateTo,
       searchKey: searchKey,
       searchValue: searchValue,
-      status: 'APPLY'
+      status: 'ALL'
     });
+    if (!res || !res.success) return res;
+
+    const items = (res.items || []).filter(function(item) {
+      const isApply = item.status === '배차신청';
+      const isCancelRequest = item.status === '배차승인' && item.cancelRequested;
+
+      if (status === 'APPLY') return isApply;
+      if (status === 'CANCEL_REQUEST') return isCancelRequest;
+      return isApply || isCancelRequest;
+    });
+
+    return { success: true, items: items };
   } catch (e) {
     return { success: false, message: e.toString(), items: [] };
   }
@@ -1087,6 +1148,7 @@ function getDriverPickupList(sessionToken, filters) {
 
     const items = (res.items || []).filter(function (item) {
       if (allowedPickupViewStatuses.indexOf(item.status) === -1) return false;
+      if (item.status === '배차승인' && item.cancelRequested) return false;
       const targetDate = getDateOnly(item.searchDate);
       if (dateFrom && (!targetDate || targetDate < dateFrom)) return false;
       if (dateTo && (!targetDate || targetDate > dateTo)) return false;
@@ -1154,6 +1216,9 @@ function markDeliveryInTransit(sessionToken, rowNo) {
     const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
     if (currentStatus !== '배차승인') {
       return { success: false, message: '배차승인 상태에서만 회수 처리할 수 있습니다.' };
+    }
+    if (getDeliveryCancelRequestFlag_(sheet.getRange(rowIndex, 22).getValue())) { // V
+      return { success: false, message: '취소 요청된 배차는 회수 처리할 수 없습니다.' };
     }
 
     const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
@@ -1242,20 +1307,123 @@ function cancelDeliveryRequest(sessionToken, rowNo) {
   try {
     const auth = requireSession_(sessionToken);
     if (!auth.success) return { success: false, message: auth.message };
-    if (!hasDeliveryManagePermission_(auth.session.permissions)) return { success: false, message: '배차 취소 권한이 없습니다.' };
 
     const rowIndex = Number(rowNo);
+    const empId = String(auth.session.employeeId || '').trim();
+    const empName = String(auth.session.userName || '').trim();
     if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
 
     const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
     const sheet = ss.getSheets()[0];
+    ensureDeliveryCancelColumns_(sheet);
     const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
-    if (currentStatus !== '배차신청') {
-      return { success: false, message: '배차신청 상태에서만 취소할 수 있습니다.' };
+    const requesterEmpId = String(sheet.getRange(rowIndex, 21).getValue() || '').trim(); // U
+    const isManager = hasDeliveryManagePermission_(auth.session.permissions);
+    const isRequester = isSameEmployeeId_(requesterEmpId, empId);
+
+    if (currentStatus !== '배차신청' && currentStatus !== '배차승인') {
+      return { success: false, message: '배차신청 또는 배차승인 상태에서만 취소할 수 있습니다.' };
+    }
+    if (!isManager && currentStatus !== '배차신청') {
+      return { success: false, message: '배차승인 상태는 취소 요청만 가능합니다.' };
+    }
+    if (!isManager && !isRequester) {
+      return { success: false, message: '신청자 본인만 취소할 수 있습니다.' };
     }
 
+    const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
     sheet.getRange(rowIndex, 17).setValue('배차취소'); // Q
+    if (isRequester) {
+      sheet.getRange(rowIndex, 22).setValue('O'); // V
+      sheet.getRange(rowIndex, 23).setValue(now); // W
+      sheet.getRange(rowIndex, 24).setValue(empId); // X
+      sheet.getRange(rowIndex, 25).setValue(empName); // Y
+    }
+    sheet.getRange(rowIndex, 26).setValue(now); // Z
+    sheet.getRange(rowIndex, 27).setValue(empId); // AA
+    sheet.getRange(rowIndex, 28).setValue(empName); // AB
     return { success: true, message: '배차 취소 처리되었습니다.', status: '배차취소' };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * 배차 취소 요청
+ * 배차승인 -> 배차승인(취소요청 플래그)
+ */
+function requestDeliveryCancel(sessionToken, rowNo) {
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasAnyDeliveryPermission_(auth.session.permissions)) return { success: false, message: '배차 취소 요청 권한이 없습니다.' };
+
+    const rowIndex = Number(rowNo);
+    const empId = String(auth.session.employeeId || '').trim();
+    const empName = String(auth.session.userName || '').trim();
+    if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
+
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+    ensureDeliveryCancelColumns_(sheet);
+    const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
+    if (currentStatus !== '배차승인') {
+      return { success: false, message: '배차승인 상태에서만 취소 요청할 수 있습니다.' };
+    }
+
+    const requesterEmpId = String(sheet.getRange(rowIndex, 21).getValue() || '').trim(); // U
+    if (!isSameEmployeeId_(requesterEmpId, empId)) {
+      return { success: false, message: '신청자 본인만 취소 요청할 수 있습니다.' };
+    }
+    if (getDeliveryCancelRequestFlag_(sheet.getRange(rowIndex, 22).getValue())) { // V
+      return { success: false, message: '이미 취소 요청된 배차입니다.' };
+    }
+
+    const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
+    sheet.getRange(rowIndex, 22).setValue('O'); // V
+    sheet.getRange(rowIndex, 23).setValue(now); // W
+    sheet.getRange(rowIndex, 24).setValue(empId); // X
+    sheet.getRange(rowIndex, 25).setValue(empName); // Y
+
+    return { success: true, message: '배차 취소 요청이 등록되었습니다.', cancelRequested: true, cancelRequestedAt: now };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * 배차 취소 요청 승인
+ * 배차승인(취소요청 플래그) -> 배차취소
+ */
+function approveDeliveryCancelRequest(sessionToken, rowNo) {
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasDeliveryManagePermission_(auth.session.permissions)) return { success: false, message: '배차 취소 승인 권한이 없습니다.' };
+
+    const rowIndex = Number(rowNo);
+    const empId = String(auth.session.employeeId || '').trim();
+    const empName = String(auth.session.userName || '').trim();
+    if (!rowIndex || rowIndex < 2) return { success: false, message: '유효하지 않은 행 번호입니다.' };
+
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+    ensureDeliveryCancelColumns_(sheet);
+    const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
+    if (currentStatus !== '배차승인') {
+      return { success: false, message: '배차승인 상태의 취소 요청만 승인할 수 있습니다.' };
+    }
+    if (!getDeliveryCancelRequestFlag_(sheet.getRange(rowIndex, 22).getValue())) { // V
+      return { success: false, message: '취소 요청된 배차가 아닙니다.' };
+    }
+
+    const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
+    sheet.getRange(rowIndex, 17).setValue('배차취소'); // Q
+    sheet.getRange(rowIndex, 26).setValue(now); // Z
+    sheet.getRange(rowIndex, 27).setValue(empId); // AA
+    sheet.getRange(rowIndex, 28).setValue(empName); // AB
+
+    return { success: true, message: '취소 요청이 승인되었습니다.', status: '배차취소', cancelApprovedAt: now };
   } catch (e) {
     return { success: false, message: e.toString() };
   }
@@ -1273,6 +1441,7 @@ function saveDeliveryApply(sessionToken, payload) {
     if (!payload) return { success: false, message: '데이터가 없습니다.' };
 
     const requesterName = String(payload.requesterName || '').trim();
+    const requesterEmpId = String(auth.session.employeeId || '').trim();
     const category = String(payload.category || '').trim();
     const categoryCustom = String(payload.categoryCustom || '').trim();
     const originPart = String(payload.originPart || '').trim();
@@ -1302,6 +1471,7 @@ function saveDeliveryApply(sessionToken, payload) {
 
     const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
     const sheet = ss.getSheets()[0];
+    ensureDeliveryCancelColumns_(sheet);
 
     const row = [
       requesterName, // A
@@ -1323,7 +1493,15 @@ function saveDeliveryApply(sessionToken, payload) {
       '배차신청', // Q
       '', // R 담당기사명
       '', // S 회수일자
-      '' // T 배송완료일자
+      '', // T 배송완료일자
+      requesterEmpId, // U 신청자사번
+      '', // V 취소요청여부
+      '', // W 취소요청일시
+      '', // X 취소요청자사번
+      '', // Y 취소요청자명
+      '', // Z 취소승인일시
+      '', // AA 취소승인자사번
+      '' // AB 취소승인자명
     ];
 
     sheet.appendRow(row);
@@ -1377,6 +1555,36 @@ function formatDateSafe_(rawValue, displayValue) {
   return raw ? raw.substring(0, 10) : '';
 }
 
+function findCartInfoByVin_(cartValues, cartDisplayValues, vinKeyword) {
+  const keyword = normalizeLooseText_(vinKeyword);
+  if (!keyword) return null;
+
+  function toCartInfo(index) {
+    const values = cartValues[index] || [];
+    const displays = cartDisplayValues[index] || [];
+    const vin = String(displays[0] || values[0] || '').trim(); // B
+    return {
+      vin: vin,
+      normalizedVin: normalizeLooseText_(vin),
+      cartVersion: String(displays[1] || values[1] || '').trim(), // C
+      manufactureDate: formatDateSafe_(values[7], displays[7]) // I
+    };
+  }
+
+  for (let i = 0; i < cartValues.length; i++) {
+    const vin = normalizeLooseText_((cartDisplayValues[i] || [])[0] || (cartValues[i] || [])[0]); // B
+    if (vin === keyword) return toCartInfo(i);
+  }
+
+  for (let i = 0; i < cartValues.length; i++) {
+    const vin = normalizeLooseText_((cartDisplayValues[i] || [])[0] || (cartValues[i] || [])[0]); // B
+    if (!vin) continue;
+    if (vin.indexOf(keyword) !== -1) return toCartInfo(i);
+    if (keyword.indexOf(vin) !== -1) return toCartInfo(i);
+  }
+  return null;
+}
+
 function findCartRowByVin_(cartValues, vinKeyword) {
   const keyword = normalizeLooseText_(vinKeyword);
   if (!keyword) return -1;
@@ -1418,6 +1626,105 @@ function isCartVersionMatched_(versionCond, normalizedVersion) {
   }).filter(function(token) { return !!token; });
   if (tokens.length === 0) return false;
   return tokens.indexOf(normalizedVersion) !== -1;
+}
+
+function buildBestInstallMapByVin_(installValues, installDisplayValues, vinKeyword) {
+  const targetVin = normalizeLooseText_(vinKeyword);
+  const byPart = {};
+  if (!targetVin) return byPart;
+
+  for (let i = 0; i < installValues.length; i++) {
+    const values = installValues[i] || [];
+    const displays = installDisplayValues[i] || [];
+    const vin = normalizeLooseText_(displays[0] || values[0]); // G
+    if (vin !== targetVin) continue;
+
+    const partKey = normalizeLooseText_(displays[3] || values[3]); // J
+    if (!partKey) continue;
+
+    const rank = toNumberOrZero_(displays[5] || values[5]); // L
+    if (!byPart[partKey] || rank > byPart[partKey].rank) {
+      byPart[partKey] = {
+        installedDate: formatDateSafe_(values[8], displays[8]), // O
+        rank: rank
+      };
+    }
+  }
+
+  return byPart;
+}
+
+function buildBestInstallMapByVinFromSheet_(installSheet, vinKeyword) {
+  const targetVin = normalizeLooseText_(vinKeyword);
+  const byPart = {};
+  if (!targetVin) return byPart;
+
+  const lastRow = installSheet.getLastRow();
+  if (lastRow < 2) return byPart;
+
+  const vinRange = installSheet.getRange(2, 7, lastRow - 1, 1); // G
+  const matches = vinRange.createTextFinder(targetVin)
+    .matchCase(false)
+    .findAll();
+  if (!matches || matches.length === 0) return byPart;
+
+  const rowNumbers = matches.map(function(range) {
+    return range.getRow();
+  }).sort(function(a, b) {
+    return a - b;
+  });
+  const groups = buildContiguousRowGroups_(rowNumbers);
+
+  groups.forEach(function(group) {
+    const values = installSheet.getRange(group.start, 7, group.count, 9).getValues(); // G~O
+    const displayValues = installSheet.getRange(group.start, 7, group.count, 9).getDisplayValues(); // G~O
+
+    for (let i = 0; i < values.length; i++) {
+      const rowValues = values[i] || [];
+      const rowDisplays = displayValues[i] || [];
+      const vin = normalizeLooseText_(rowDisplays[0] || rowValues[0]); // G
+      if (vin !== targetVin) continue;
+
+      const partKey = normalizeLooseText_(rowDisplays[3] || rowValues[3]); // J
+      if (!partKey) continue;
+
+      const rank = toNumberOrZero_(rowDisplays[5] || rowValues[5]); // L
+      if (!byPart[partKey] || rank > byPart[partKey].rank) {
+        byPart[partKey] = {
+          installedDate: formatDateSafe_(rowValues[8], rowDisplays[8]), // O
+          rank: rank
+        };
+      }
+    }
+  });
+
+  return byPart;
+}
+
+function buildContiguousRowGroups_(rowNumbers) {
+  const groups = [];
+  let start = null;
+  let prev = null;
+
+  rowNumbers.forEach(function(row) {
+    if (start === null) {
+      start = row;
+      prev = row;
+      return;
+    }
+    if (row === prev + 1) {
+      prev = row;
+      return;
+    }
+    groups.push({ start: start, count: prev - start + 1 });
+    start = row;
+    prev = row;
+  });
+
+  if (start !== null) {
+    groups.push({ start: start, count: prev - start + 1 });
+  }
+  return groups;
 }
 
 function findBestInstallRow_(installValues, installDisplayValues, vinKeyword, partName) {

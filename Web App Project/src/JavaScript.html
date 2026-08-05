@@ -1485,7 +1485,14 @@
   let activeDeliveryTabId = 'apply';
   let currentDetailRowNo = null;
   let deliveryDetailActionType = '';
+  let deliveryDetailCancelActionType = '';
   const DELIVERY_CONTENTS_MAX_COUNT = 10;
+
+  function isCurrentDeliveryRequester(item) {
+    const requesterEmpId = String((item && item.requesterEmpId) || '').trim();
+    const loginEmpId = String(currentUserEmpId || '').trim();
+    return !!requesterEmpId && !!loginEmpId && requesterEmpId === loginEmpId;
+  }
 
   function showDeliveryView() {
     document.getElementById('mainView').style.display = 'none';
@@ -1515,7 +1522,7 @@
     const appSearchKey = document.getElementById('approveSearchKey');
     if (appSearchKey) appSearchKey.value = 'originPart';
     const appStatus = document.getElementById('approveStatusFilter');
-    if (appStatus) appStatus.value = 'APPLY';
+    if (appStatus) appStatus.value = 'APPROVAL_QUEUE';
     const appResults = document.getElementById('deliveryApproveResults');
     if (appResults) {
       appResults.innerHTML = `
@@ -1931,7 +1938,7 @@
     }
     const searchKey = String(document.getElementById('approveSearchKey').value || 'originPart').trim();
     const searchValue = String(document.getElementById('approveSearchInput').value || '').trim();
-    const status = 'APPLY';
+    const status = String((document.getElementById('approveStatusFilter') || {}).value || 'APPROVAL_QUEUE').trim();
 
     const container = document.getElementById('deliveryApproveResults');
     container.innerHTML = `
@@ -1994,6 +2001,10 @@
       const contentsCart = String(item.contentsCart || '').trim() || '-';
       const contentsMaterial = String(item.contentsMaterial || '').trim() || '-';
       const note = String(item.note || '').trim() || '-';
+      const isCancelRequest = item.status === '배차승인' && item.cancelRequested;
+      const cancelRequestBadge = isCancelRequest
+        ? `<span class="delivery-cancel-request-badge">취소요청</span>`
+        : '';
 
       const dateToShow = item.searchDate || item.approvedDate || item.applyDate;
       const formattedDate = dateToShow ? String(dateToShow).trim() : '';
@@ -2005,6 +2016,7 @@
             <div style="display:flex; gap:8px; align-items:center;">
               <span style="font-size:12px; color:#888;">${escapeHtml(formattedDate)}</span>
               <span class="delivery-list-status ${statusMeta.className}">${statusMeta.label}</span>
+              ${cancelRequestBadge}
             </div>
           </div>
           <div class="delivery-list-route">${escapeHtml(originLabel)} → ${escapeHtml(destLabel)}</div>
@@ -2023,6 +2035,11 @@
               <button class="btn-delivery-approve-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); approveDelivery(${item.rowNo});">배차승인</button>
               <button class="btn-delivery-cancel-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); cancelDelivery(${item.rowNo});">배차취소</button>
             </div>
+          </div>
+          ` : ''}
+          ${isCancelRequest ? `
+          <div class="delivery-list-footer">
+            <button class="btn-delivery-cancel-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); approveDeliveryCancel(${item.rowNo});">취소승인</button>
           </div>
           ` : ''}
         </div>`;
@@ -2161,6 +2178,26 @@
       const contentsCart = String(item.contentsCart || '').trim() || '-';
       const contentsMaterial = String(item.contentsMaterial || '').trim() || '-';
       const note = String(item.note || '').trim() || '-';
+      const isRequester = isCurrentDeliveryRequester(item);
+      const isCancelRequest = item.status === '배차승인' && item.cancelRequested;
+      let actionHtml = '';
+
+      if (item.status === '배차신청' && isRequester) {
+        actionHtml = `
+          <div class="delivery-list-footer">
+            <button class="btn-delivery-cancel-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); cancelDelivery(${item.rowNo});">배차취소</button>
+          </div>`;
+      } else if (item.status === '배차승인' && isRequester && !item.cancelRequested) {
+        actionHtml = `
+          <div class="delivery-list-footer">
+            <button class="btn-delivery-cancel-request-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); requestDeliveryCancelByRequester(${item.rowNo});">취소요청</button>
+          </div>`;
+      } else if (isCancelRequest) {
+        actionHtml = `
+          <div class="delivery-list-footer">
+            <span class="delivery-readonly-badge">취소 요청됨</span>
+          </div>`;
+      }
 
       const dateToShow = item.searchDate || item.approvedDate || item.applyDate;
       const formattedDate = dateToShow ? String(dateToShow).trim() : '';
@@ -2172,6 +2209,7 @@
             <div style="display:flex; gap:8px; align-items:center;">
               <span style="font-size:12px; color:#888;">${escapeHtml(formattedDate)}</span>
               <span class="delivery-list-status ${statusMeta.className}">${statusMeta.label}</span>
+              ${isCancelRequest ? '<span class="delivery-cancel-request-badge">취소요청</span>' : ''}
             </div>
           </div>
           <div class="delivery-list-route">${escapeHtml(originLabel)} → ${escapeHtml(destLabel)}</div>
@@ -2184,6 +2222,7 @@
             <div><strong>자재</strong> ${escapeHtml(contentsMaterial)}</div>
             <div><strong>비고</strong> ${escapeHtml(note)}</div>
           </div>
+          ${actionHtml}
         </div>`;
     });
     container.innerHTML = html;
@@ -2428,6 +2467,17 @@
       : '-';
     const detailCartHtml = formatCommaSeparatedForDetail(item.contentsCart);
     const detailMaterialHtml = formatCommaSeparatedForDetail(item.contentsMaterial);
+    const isRequester = isCurrentDeliveryRequester(item);
+    const isCancelRequest = item.status === '배차승인' && item.cancelRequested;
+    const cancelRequestInfoRows = item.cancelRequested ? `
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">취소 요청</div>
+        <div class="delivery-detail-value canceled">${escapeHtml(item.cancelRequestedAt || '-')}</div>
+      </div>
+      <div class="delivery-detail-row">
+        <div class="delivery-detail-label">취소 요청자</div>
+        <div class="delivery-detail-value">${escapeHtml(item.cancelRequesterName || '-')}</div>
+      </div>` : '';
 
     document.getElementById('deliveryApplySection').style.display = 'none';
     document.getElementById('deliveryApproveSection').style.display = 'none';
@@ -2515,6 +2565,7 @@
         <div class="delivery-detail-label">배송 완료일</div>
         <div class="delivery-detail-value">${escapeHtml(item.deliveryCompletedAt || '-')}</div>
       </div>
+      ${cancelRequestInfoRows}
       <div class="delivery-detail-row">
         <div class="delivery-detail-label">신청자</div>
         <div class="delivery-detail-value">${requesterDisplay}</div>
@@ -2528,12 +2579,38 @@
     const detailCancelBtn = document.getElementById('deliveryDetailCancelBtn');
     if (detailBtn) {
       deliveryDetailActionType = '';
+      deliveryDetailCancelActionType = '';
       if (detailCancelBtn) detailCancelBtn.style.display = 'none';
       if (activeDeliveryTabId === 'approve' && item.status === '배차신청') {
         detailBtn.innerText = '배차승인';
         detailBtn.style.display = 'block';
-        if (detailCancelBtn) detailCancelBtn.style.display = 'block';
+        if (detailCancelBtn) {
+          detailCancelBtn.innerText = '배차취소';
+          detailCancelBtn.style.display = 'block';
+        }
         deliveryDetailActionType = 'approve';
+        deliveryDetailCancelActionType = 'cancel';
+      } else if (activeDeliveryTabId === 'approve' && isCancelRequest) {
+        detailBtn.style.display = 'none';
+        if (detailCancelBtn) {
+          detailCancelBtn.innerText = '취소승인';
+          detailCancelBtn.style.display = 'block';
+        }
+        deliveryDetailCancelActionType = 'approveCancelRequest';
+      } else if (activeDeliveryTabId === 'list' && item.status === '배차신청' && isRequester) {
+        detailBtn.style.display = 'none';
+        if (detailCancelBtn) {
+          detailCancelBtn.innerText = '배차취소';
+          detailCancelBtn.style.display = 'block';
+        }
+        deliveryDetailCancelActionType = 'cancel';
+      } else if (activeDeliveryTabId === 'list' && item.status === '배차승인' && isRequester && !item.cancelRequested) {
+        detailBtn.style.display = 'none';
+        if (detailCancelBtn) {
+          detailCancelBtn.innerText = '취소요청';
+          detailCancelBtn.style.display = 'block';
+        }
+        deliveryDetailCancelActionType = 'requestCancel';
       } else if (activeDeliveryTabId === 'pickup' && item.status === '배차승인') {
         detailBtn.innerText = '회수';
         detailBtn.style.display = 'block';
@@ -2623,6 +2700,66 @@
     });
   }
 
+  function requestDeliveryCancelByRequester(rowNo) {
+    CustomConfirm('배차 취소를 요청하시겠습니까?\n배차관리자가 승인하면 취소 완료됩니다.', function (isOk) {
+      if (!isOk) return;
+      if (!ensureSessionToken()) return;
+
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function (res) {
+          hideLoading();
+          if (!res || !res.success) {
+            alert((res && res.message) ? res.message : '취소 요청에 실패했습니다.');
+            return;
+          }
+          alert('배차 취소 요청이 등록되었습니다.');
+          closeDeliveryDetail();
+
+          if (activeDeliveryTabId === 'list') {
+            loadDeliveryList();
+          } else if (activeDeliveryTabId === 'pickup') {
+            loadDeliveryPickupList();
+          }
+        })
+        .withFailureHandler(function (err) {
+          hideLoading();
+          alert('취소 요청 중 오류 발생: ' + err);
+        })
+        .requestDeliveryCancel(currentSessionToken, rowNo);
+    });
+  }
+
+  function approveDeliveryCancel(rowNo) {
+    CustomConfirm('취소 요청을 승인하시겠습니까?\n승인 후 배차취소 상태로 변경됩니다.', function (isOk) {
+      if (!isOk) return;
+      if (!ensureSessionToken()) return;
+
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function (res) {
+          hideLoading();
+          if (!res || !res.success) {
+            alert((res && res.message) ? res.message : '취소 승인에 실패했습니다.');
+            return;
+          }
+          alert('취소 요청이 승인되었습니다.');
+          closeDeliveryDetail();
+
+          if (activeDeliveryTabId === 'approve') {
+            loadDeliveryApprovals();
+          } else if (activeDeliveryTabId === 'list') {
+            loadDeliveryList();
+          }
+        })
+        .withFailureHandler(function (err) {
+          hideLoading();
+          alert('취소 승인 중 오류 발생: ' + err);
+        })
+        .approveDeliveryCancelRequest(currentSessionToken, rowNo);
+    });
+  }
+
   function approveDeliveryFromDetail() {
     if (!currentDetailRowNo) return;
     if (deliveryDetailActionType === 'pickup') {
@@ -2638,6 +2775,14 @@
 
   function cancelDeliveryFromDetail() {
     if (!currentDetailRowNo) return;
+    if (deliveryDetailCancelActionType === 'requestCancel') {
+      requestDeliveryCancelByRequester(currentDetailRowNo);
+      return;
+    }
+    if (deliveryDetailCancelActionType === 'approveCancelRequest') {
+      approveDeliveryCancel(currentDetailRowNo);
+      return;
+    }
     cancelDelivery(currentDetailRowNo);
   }
 

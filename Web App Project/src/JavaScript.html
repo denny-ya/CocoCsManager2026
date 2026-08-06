@@ -1481,17 +1481,34 @@
   // 배차 관리 (Delivery Management) 기능 로직
   // ==========================================
   const deliveryBranchOptionsCache = {};
-  let deliveryListCache = [];
+  let deliveryApproveListCache = [];
+  let deliveryGeneralListCache = [];
+  let deliveryPickupListCache = [];
+  let deliveryDriverListCache = [];
   let activeDeliveryTabId = 'apply';
   let currentDetailRowNo = null;
   let deliveryDetailActionType = '';
   let deliveryDetailCancelActionType = '';
+  let deliveryApproveSelectMode = false;
+  const deliveryApproveSelectedRows = {};
+  let deliveryPickupSelectMode = false;
+  const deliveryPickupSelectedRows = {};
+  let deliveryDriverSelectMode = false;
+  const deliveryDriverSelectedRows = {};
   const DELIVERY_CONTENTS_MAX_COUNT = 10;
 
   function isCurrentDeliveryRequester(item) {
     const requesterEmpId = String((item && item.requesterEmpId) || '').trim();
     const loginEmpId = String(currentUserEmpId || '').trim();
     return !!requesterEmpId && !!loginEmpId && requesterEmpId === loginEmpId;
+  }
+
+  function getActiveDeliveryListCache() {
+    if (activeDeliveryTabId === 'approve') return deliveryApproveListCache;
+    if (activeDeliveryTabId === 'list') return deliveryGeneralListCache;
+    if (activeDeliveryTabId === 'pickup') return deliveryPickupListCache;
+    if (activeDeliveryTabId === 'driver') return deliveryDriverListCache;
+    return [];
   }
 
   function showDeliveryView() {
@@ -1512,6 +1529,14 @@
   }
 
   function resetDeliverySearchFilters() {
+    deliveryApproveListCache = [];
+    deliveryGeneralListCache = [];
+    deliveryPickupListCache = [];
+    deliveryDriverListCache = [];
+    resetDeliveryApproveSelection();
+    resetDeliveryPickupSelection();
+    resetDeliveryDriverSelection();
+
     // 배차 승인 필터 초기화
     const appDateFrom = document.getElementById('approveDateFrom');
     if (appDateFrom) appDateFrom.value = '';
@@ -1630,6 +1655,15 @@
 
   function switchDeliveryTab(tabId) {
     activeDeliveryTabId = tabId;
+    if (tabId !== 'approve') {
+      resetDeliveryApproveSelection();
+    }
+    if (tabId !== 'pickup') {
+      resetDeliveryPickupSelection();
+    }
+    if (tabId !== 'driver') {
+      resetDeliveryDriverSelection();
+    }
     document.querySelectorAll('#deliveryTabs .tab-item').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('#deliveryView .bs-section').forEach(el => el.style.display = 'none');
 
@@ -1928,6 +1962,121 @@
       .saveDeliveryApply(currentSessionToken, payload);
   }
 
+  function resetDeliveryApproveSelection() {
+    deliveryApproveSelectMode = false;
+    Object.keys(deliveryApproveSelectedRows).forEach(function(rowNo) {
+      delete deliveryApproveSelectedRows[rowNo];
+    });
+  }
+
+  function getDeliveryApproveSelectableRows(items) {
+    return (items || []).filter(function(item) {
+      return item.status === '배차신청';
+    }).map(function(item) {
+      return Number(item.rowNo);
+    }).filter(function(rowNo) {
+      return !!rowNo;
+    });
+  }
+
+  function getSelectedDeliveryApproveRowNos() {
+    return Object.keys(deliveryApproveSelectedRows).filter(function(rowNo) {
+      return !!deliveryApproveSelectedRows[rowNo];
+    }).map(function(rowNo) {
+      return Number(rowNo);
+    }).filter(function(rowNo) {
+      return !!rowNo;
+    });
+  }
+
+  function renderDeliveryApproveSelectionBar() {
+    renderDeliveryApproveResults(deliveryApproveListCache || []);
+  }
+
+  function enterDeliveryApproveSelectMode() {
+    deliveryApproveSelectMode = true;
+    renderDeliveryApproveSelectionBar();
+  }
+
+  function exitDeliveryApproveSelectMode() {
+    resetDeliveryApproveSelection();
+    renderDeliveryApproveSelectionBar();
+  }
+
+  function selectAllDeliveryApproveItems() {
+    if (!deliveryApproveSelectMode) return;
+    getDeliveryApproveSelectableRows(deliveryApproveListCache).forEach(function(rowNo) {
+      deliveryApproveSelectedRows[rowNo] = true;
+    });
+    renderDeliveryApproveSelectionBar();
+  }
+
+  function clearDeliveryApproveSelection() {
+    Object.keys(deliveryApproveSelectedRows).forEach(function(rowNo) {
+      delete deliveryApproveSelectedRows[rowNo];
+    });
+    renderDeliveryApproveSelectionBar();
+  }
+
+  function toggleDeliveryApproveSelection(rowNo) {
+    const key = String(rowNo);
+    if (deliveryApproveSelectedRows[key]) {
+      delete deliveryApproveSelectedRows[key];
+    } else {
+      deliveryApproveSelectedRows[key] = true;
+    }
+    renderDeliveryApproveSelectionBar();
+  }
+
+  function handleDeliveryApproveItemClick(rowNo, isSelectable) {
+    if (deliveryApproveSelectMode) {
+      if (isSelectable) toggleDeliveryApproveSelection(rowNo);
+      return;
+    }
+    openDeliveryDetail(rowNo);
+  }
+
+  function bulkProcessDeliveryApprovals(actionType) {
+    const rowNos = getSelectedDeliveryApproveRowNos();
+    if (rowNos.length === 0) {
+      alert('선택된 배차신청 건이 없습니다.');
+      return;
+    }
+
+    const isApprove = actionType === 'approve';
+    const message = isApprove
+      ? `${rowNos.length}건을 일괄 배차승인하시겠습니까?`
+      : `${rowNos.length}건을 일괄 배차취소하시겠습니까?\n취소 후에는 복구할 수 없습니다.`;
+
+    CustomConfirm(message, function(isOk) {
+      if (!isOk) return;
+      if (!ensureSessionToken()) return;
+
+      showLoading();
+      const runner = google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (!res || !res.success) {
+            alert((res && res.message) ? res.message : '일괄 처리에 실패했습니다.');
+            return;
+          }
+          alert((res && res.message) ? res.message : '일괄 처리가 완료되었습니다.');
+          resetDeliveryApproveSelection();
+          loadDeliveryApprovals();
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('일괄 처리 중 오류 발생: ' + err);
+        });
+
+      if (isApprove) {
+        runner.bulkApproveDeliveryRequests(currentSessionToken, rowNos);
+      } else {
+        runner.bulkCancelDeliveryRequests(currentSessionToken, rowNos);
+      }
+    });
+  }
+
   function loadDeliveryApprovals() {
     if (!ensureSessionToken()) return;
     const dateFrom = String(document.getElementById('approveDateFrom').value || '').trim();
@@ -1939,6 +2088,7 @@
     const searchKey = String(document.getElementById('approveSearchKey').value || 'originPart').trim();
     const searchValue = String(document.getElementById('approveSearchInput').value || '').trim();
     const status = String((document.getElementById('approveStatusFilter') || {}).value || 'APPROVAL_QUEUE').trim();
+    resetDeliveryApproveSelection();
 
     const container = document.getElementById('deliveryApproveResults');
     container.innerHTML = `
@@ -1959,8 +2109,8 @@
             </div>`;
           return;
         }
-        deliveryListCache = res.items || [];
-        renderDeliveryApproveResults(deliveryListCache);
+        deliveryApproveListCache = res.items || [];
+        renderDeliveryApproveResults(deliveryApproveListCache);
       })
       .withFailureHandler(function (err) {
         hideLoading();
@@ -1990,7 +2140,27 @@
       return;
     }
 
-    let html = '';
+    const selectableRows = getDeliveryApproveSelectableRows(items);
+    const selectedRows = getSelectedDeliveryApproveRowNos();
+    const selectedCount = selectedRows.length;
+    const selectButtonDisabled = selectableRows.length === 0 ? 'disabled' : '';
+    let html = `
+      <div class="delivery-bulk-toolbar">
+        ${deliveryApproveSelectMode ? `
+          <div class="delivery-bulk-left">
+            <button class="delivery-bulk-light-btn" onclick="selectAllDeliveryApproveItems()">전체선택</button>
+            <button class="delivery-bulk-light-btn" onclick="clearDeliveryApproveSelection()">선택해제</button>
+            <span class="delivery-bulk-count">선택 ${selectedCount}건</span>
+          </div>
+          <button class="delivery-bulk-close-btn" onclick="exitDeliveryApproveSelectMode()" aria-label="선택 종료">
+            <span class="material-icons">close</span>
+          </button>
+        ` : `
+          <button class="delivery-bulk-select-btn" ${selectButtonDisabled} onclick="enterDeliveryApproveSelectMode()">선택</button>
+        `}
+      </div>
+    `;
+
     items.forEach(function (item) {
       const statusMeta = getDeliveryStatusMeta(item.status);
       const categoryLabel = getDeliveryCategoryLabel(item);
@@ -2005,12 +2175,20 @@
       const cancelRequestBadge = isCancelRequest
         ? `<span class="delivery-cancel-request-badge">취소요청</span>`
         : '';
+      const isSelectable = item.status === '배차신청';
+      const isChecked = !!deliveryApproveSelectedRows[String(item.rowNo)];
+      const checkboxHtml = deliveryApproveSelectMode
+        ? `<label class="delivery-select-checkbox-wrap" onclick="event.stopPropagation();">
+            <input type="checkbox" class="delivery-select-checkbox" ${isChecked ? 'checked' : ''} ${isSelectable ? '' : 'disabled'} onchange="toggleDeliveryApproveSelection(${item.rowNo})">
+          </label>`
+        : '';
 
       const dateToShow = item.searchDate || item.approvedDate || item.applyDate;
       const formattedDate = dateToShow ? String(dateToShow).trim() : '';
 
       html += `
-        <div class="delivery-list-item" onclick="openDeliveryDetail(${item.rowNo})">
+        <div class="delivery-list-item ${deliveryApproveSelectMode ? 'select-mode' : ''} ${isChecked ? 'selected' : ''}" onclick="handleDeliveryApproveItemClick(${item.rowNo}, ${isSelectable})">
+          ${checkboxHtml}
           <div class="delivery-list-top">
             <span class="delivery-list-category">${escapeHtml(categoryLabel)}</span>
             <div style="display:flex; gap:8px; align-items:center;">
@@ -2029,7 +2207,7 @@
             <div><strong>자재</strong> ${escapeHtml(contentsMaterial)}</div>
             <div><strong>비고</strong> ${escapeHtml(note)}</div>
           </div>
-          ${item.status === '배차신청' ? `
+          ${item.status === '배차신청' && !deliveryApproveSelectMode ? `
           <div class="delivery-list-footer">
             <div style="display:grid; gap:8px; width:100%;">
               <button class="btn-delivery-approve-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); approveDelivery(${item.rowNo});">배차승인</button>
@@ -2037,13 +2215,23 @@
             </div>
           </div>
           ` : ''}
-          ${isCancelRequest ? `
+          ${isCancelRequest && !deliveryApproveSelectMode ? `
           <div class="delivery-list-footer">
             <button class="btn-delivery-cancel-inline" style="width: 100%; border-radius: 8px;" onclick="event.stopPropagation(); approveDeliveryCancel(${item.rowNo});">취소승인</button>
           </div>
           ` : ''}
         </div>`;
     });
+
+    if (deliveryApproveSelectMode && selectedCount > 0) {
+      html += `
+        <div class="delivery-bulk-action-bar">
+          <button class="delivery-bulk-approve-btn" onclick="bulkProcessDeliveryApprovals('approve')">일괄 배차승인</button>
+          <button class="delivery-bulk-cancel-btn" onclick="bulkProcessDeliveryApprovals('cancel')">일괄 배차취소</button>
+        </div>
+        <div class="delivery-bulk-action-spacer" aria-hidden="true"></div>
+      `;
+    }
     container.innerHTML = html;
   }
 
@@ -2136,8 +2324,8 @@
             </div>`;
           return;
         }
-        deliveryListCache = res.items || [];
-        renderDeliveryListResults(deliveryListCache);
+        deliveryGeneralListCache = res.items || [];
+        renderDeliveryListResults(deliveryGeneralListCache);
       })
       .withFailureHandler(function (err) {
         hideLoading();
@@ -2228,6 +2416,216 @@
     container.innerHTML = html;
   }
 
+  function resetDeliveryPickupSelection() {
+    deliveryPickupSelectMode = false;
+    Object.keys(deliveryPickupSelectedRows).forEach(function(rowNo) {
+      delete deliveryPickupSelectedRows[rowNo];
+    });
+  }
+
+  function getDeliveryPickupSelectableRows(items) {
+    return (items || []).filter(function(item) {
+      return item.status === '배차승인' && !item.cancelRequested;
+    }).map(function(item) {
+      return Number(item.rowNo);
+    }).filter(function(rowNo) {
+      return !!rowNo;
+    });
+  }
+
+  function getSelectedDeliveryPickupRowNos() {
+    return Object.keys(deliveryPickupSelectedRows).filter(function(rowNo) {
+      return !!deliveryPickupSelectedRows[rowNo];
+    }).map(function(rowNo) {
+      return Number(rowNo);
+    }).filter(function(rowNo) {
+      return !!rowNo;
+    });
+  }
+
+  function renderDeliveryPickupSelectionBar() {
+    renderDriverResults('deliveryPickupResults', deliveryPickupListCache || [], 'pickup');
+  }
+
+  function enterDeliveryPickupSelectMode() {
+    deliveryPickupSelectMode = true;
+    renderDeliveryPickupSelectionBar();
+  }
+
+  function exitDeliveryPickupSelectMode() {
+    resetDeliveryPickupSelection();
+    renderDeliveryPickupSelectionBar();
+  }
+
+  function selectAllDeliveryPickupItems() {
+    if (!deliveryPickupSelectMode) return;
+    getDeliveryPickupSelectableRows(deliveryPickupListCache).forEach(function(rowNo) {
+      deliveryPickupSelectedRows[rowNo] = true;
+    });
+    renderDeliveryPickupSelectionBar();
+  }
+
+  function clearDeliveryPickupSelection() {
+    Object.keys(deliveryPickupSelectedRows).forEach(function(rowNo) {
+      delete deliveryPickupSelectedRows[rowNo];
+    });
+    renderDeliveryPickupSelectionBar();
+  }
+
+  function toggleDeliveryPickupSelection(rowNo) {
+    const key = String(rowNo);
+    if (deliveryPickupSelectedRows[key]) {
+      delete deliveryPickupSelectedRows[key];
+    } else {
+      deliveryPickupSelectedRows[key] = true;
+    }
+    renderDeliveryPickupSelectionBar();
+  }
+
+  function handleDeliveryPickupItemClick(rowNo, isSelectable) {
+    if (deliveryPickupSelectMode) {
+      if (isSelectable) toggleDeliveryPickupSelection(rowNo);
+      return;
+    }
+    openDeliveryDetail(rowNo);
+  }
+
+  function bulkProcessDeliveryPickup() {
+    const rowNos = getSelectedDeliveryPickupRowNos();
+    if (rowNos.length === 0) {
+      alert('선택된 배차승인 건이 없습니다.');
+      return;
+    }
+
+    CustomConfirm(`${rowNos.length}건을 일괄 회수 처리하시겠습니까?`, function(isOk) {
+      if (!isOk) return;
+      if (!ensureSessionToken()) return;
+
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (!res || !res.success) {
+            alert((res && res.message) ? res.message : '일괄 회수 처리에 실패했습니다.');
+            return;
+          }
+          alert((res && res.message) ? res.message : '일괄 회수 처리가 완료되었습니다.');
+          resetDeliveryPickupSelection();
+          loadDeliveryPickupList();
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('일괄 회수 처리 중 오류 발생: ' + err);
+        })
+        .bulkMarkDeliveryInTransit(currentSessionToken, rowNos);
+    });
+  }
+
+  function resetDeliveryDriverSelection() {
+    deliveryDriverSelectMode = false;
+    Object.keys(deliveryDriverSelectedRows).forEach(function(rowNo) {
+      delete deliveryDriverSelectedRows[rowNo];
+    });
+  }
+
+  function getDeliveryDriverSelectableRows(items) {
+    return (items || []).filter(function(item) {
+      return item.status === '이동 중';
+    }).map(function(item) {
+      return Number(item.rowNo);
+    }).filter(function(rowNo) {
+      return !!rowNo;
+    });
+  }
+
+  function getSelectedDeliveryDriverRowNos() {
+    return Object.keys(deliveryDriverSelectedRows).filter(function(rowNo) {
+      return !!deliveryDriverSelectedRows[rowNo];
+    }).map(function(rowNo) {
+      return Number(rowNo);
+    }).filter(function(rowNo) {
+      return !!rowNo;
+    });
+  }
+
+  function renderDeliveryDriverSelectionBar() {
+    renderDriverResults('deliveryDriverResults', deliveryDriverListCache || [], 'complete');
+  }
+
+  function enterDeliveryDriverSelectMode() {
+    deliveryDriverSelectMode = true;
+    renderDeliveryDriverSelectionBar();
+  }
+
+  function exitDeliveryDriverSelectMode() {
+    resetDeliveryDriverSelection();
+    renderDeliveryDriverSelectionBar();
+  }
+
+  function selectAllDeliveryDriverItems() {
+    if (!deliveryDriverSelectMode) return;
+    getDeliveryDriverSelectableRows(deliveryDriverListCache).forEach(function(rowNo) {
+      deliveryDriverSelectedRows[rowNo] = true;
+    });
+    renderDeliveryDriverSelectionBar();
+  }
+
+  function clearDeliveryDriverSelection() {
+    Object.keys(deliveryDriverSelectedRows).forEach(function(rowNo) {
+      delete deliveryDriverSelectedRows[rowNo];
+    });
+    renderDeliveryDriverSelectionBar();
+  }
+
+  function toggleDeliveryDriverSelection(rowNo) {
+    const key = String(rowNo);
+    if (deliveryDriverSelectedRows[key]) {
+      delete deliveryDriverSelectedRows[key];
+    } else {
+      deliveryDriverSelectedRows[key] = true;
+    }
+    renderDeliveryDriverSelectionBar();
+  }
+
+  function handleDeliveryDriverItemClick(rowNo, isSelectable) {
+    if (deliveryDriverSelectMode) {
+      if (isSelectable) toggleDeliveryDriverSelection(rowNo);
+      return;
+    }
+    openDeliveryDetail(rowNo);
+  }
+
+  function bulkProcessDeliveryDriver() {
+    const rowNos = getSelectedDeliveryDriverRowNos();
+    if (rowNos.length === 0) {
+      alert('선택된 이동 중 건이 없습니다.');
+      return;
+    }
+
+    CustomConfirm(`${rowNos.length}건을 일괄 배송완료 처리하시겠습니까?`, function(isOk) {
+      if (!isOk) return;
+      if (!ensureSessionToken()) return;
+
+      showLoading();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (!res || !res.success) {
+            alert((res && res.message) ? res.message : '일괄 배송완료 처리에 실패했습니다.');
+            return;
+          }
+          alert((res && res.message) ? res.message : '일괄 배송완료 처리가 완료되었습니다.');
+          resetDeliveryDriverSelection();
+          loadDeliveryDriverList();
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert('일괄 배송완료 처리 중 오류 발생: ' + err);
+        })
+        .bulkMarkDeliveryCompleted(currentSessionToken, rowNos);
+    });
+  }
+
   function loadDeliveryPickupList() {
     if (!ensureSessionToken()) return;
     const dateFrom = String(document.getElementById('deliveryPickupDateFrom').value || '').trim();
@@ -2236,6 +2634,7 @@
       alert('조회 시작일이 종료일보다 늦습니다. 날짜를 다시 확인해주세요.');
       return;
     }
+    resetDeliveryPickupSelection();
     const container = document.getElementById('deliveryPickupResults');
     container.innerHTML = `
       <div class="empty-state">
@@ -2255,8 +2654,8 @@
             </div>`;
           return;
         }
-        deliveryListCache = res.items || [];
-        renderDriverResults('deliveryPickupResults', deliveryListCache, 'pickup');
+        deliveryPickupListCache = res.items || [];
+        renderDriverResults('deliveryPickupResults', deliveryPickupListCache, 'pickup');
       })
       .withFailureHandler(function (err) {
         hideLoading();
@@ -2280,6 +2679,7 @@
       alert('조회 시작일이 종료일보다 늦습니다. 날짜를 다시 확인해주세요.');
       return;
     }
+    resetDeliveryDriverSelection();
     const container = document.getElementById('deliveryDriverResults');
     container.innerHTML = `
       <div class="empty-state">
@@ -2299,8 +2699,8 @@
             </div>`;
           return;
         }
-        deliveryListCache = res.items || [];
-        renderDriverResults('deliveryDriverResults', deliveryListCache, 'complete');
+        deliveryDriverListCache = res.items || [];
+        renderDriverResults('deliveryDriverResults', deliveryDriverListCache, 'complete');
       })
       .withFailureHandler(function (err) {
         hideLoading();
@@ -2327,7 +2727,38 @@
       return;
     }
 
-    let html = '';
+    const isPickupAction = actionType === 'pickup';
+    const selectMode = isPickupAction ? deliveryPickupSelectMode : deliveryDriverSelectMode;
+    const selectableRows = isPickupAction
+      ? getDeliveryPickupSelectableRows(items)
+      : getDeliveryDriverSelectableRows(items);
+    const selectedRows = isPickupAction
+      ? getSelectedDeliveryPickupRowNos()
+      : getSelectedDeliveryDriverRowNos();
+    const selectedCount = selectedRows.length;
+    const selectButtonDisabled = selectableRows.length === 0 ? 'disabled' : '';
+    const selectAllFn = isPickupAction ? 'selectAllDeliveryPickupItems' : 'selectAllDeliveryDriverItems';
+    const clearFn = isPickupAction ? 'clearDeliveryPickupSelection' : 'clearDeliveryDriverSelection';
+    const exitFn = isPickupAction ? 'exitDeliveryPickupSelectMode' : 'exitDeliveryDriverSelectMode';
+    const enterFn = isPickupAction ? 'enterDeliveryPickupSelectMode' : 'enterDeliveryDriverSelectMode';
+
+    let html = `
+      <div class="delivery-bulk-toolbar">
+        ${selectMode ? `
+          <div class="delivery-bulk-left">
+            <button class="delivery-bulk-light-btn" onclick="${selectAllFn}()">전체선택</button>
+            <button class="delivery-bulk-light-btn" onclick="${clearFn}()">선택해제</button>
+            <span class="delivery-bulk-count">선택 ${selectedCount}건</span>
+          </div>
+          <button class="delivery-bulk-close-btn" onclick="${exitFn}()" aria-label="선택 종료">
+            <span class="material-icons">close</span>
+          </button>
+        ` : `
+          <button class="delivery-bulk-select-btn" ${selectButtonDisabled} onclick="${enterFn}()">선택</button>
+        `}
+      </div>
+    `;
+
     items.forEach(function (item) {
       const statusMeta = getDeliveryStatusMeta(item.status);
       const categoryLabel = getDeliveryCategoryLabel(item);
@@ -2343,12 +2774,25 @@
         ? `markPickupInTransit(${item.rowNo})`
         : `markDriverDeliveryComplete(${item.rowNo})`;
       const canRunAction = actionType === 'complete' || item.status === '배차승인';
-      const actionHtml = canRunAction
+      const actionHtml = !selectMode && canRunAction
         ? `<button class="btn-delivery-approve-inline" style="width:100%; border-radius:8px;" onclick="event.stopPropagation(); ${actionFn};">${actionLabel}</button>`
-        : `<span class="delivery-readonly-badge">조회 전용</span>`;
+        : (!selectMode ? `<span class="delivery-readonly-badge">조회 전용</span>` : '');
+      const isSelectable = selectableRows.indexOf(Number(item.rowNo)) !== -1;
+      const isChecked = isPickupAction
+        ? !!deliveryPickupSelectedRows[String(item.rowNo)]
+        : !!deliveryDriverSelectedRows[String(item.rowNo)];
+      const checkboxHtml = selectMode && isSelectable
+        ? `<label class="delivery-select-checkbox-wrap" onclick="event.stopPropagation();">
+            <input type="checkbox" class="delivery-select-checkbox" ${isChecked ? 'checked' : ''} onchange="${isPickupAction ? 'toggleDeliveryPickupSelection' : 'toggleDeliveryDriverSelection'}(${item.rowNo})">
+          </label>`
+        : '';
+      const itemClickFn = isPickupAction
+        ? `handleDeliveryPickupItemClick(${item.rowNo}, ${isSelectable})`
+        : `handleDeliveryDriverItemClick(${item.rowNo}, ${isSelectable})`;
 
       html += `
-        <div class="delivery-list-item" onclick="openDeliveryDetail(${item.rowNo})">
+        <div class="delivery-list-item ${selectMode && isSelectable ? 'select-mode' : ''} ${isChecked ? 'selected' : ''}" onclick="${itemClickFn}">
+          ${checkboxHtml}
           <div class="delivery-list-top">
             <span class="delivery-list-category">${escapeHtml(categoryLabel)}</span>
             <span class="delivery-list-status ${statusMeta.className}">${statusMeta.label}</span>
@@ -2363,12 +2807,20 @@
             <div><strong>자재</strong> ${escapeHtml(contentsMaterial)}</div>
             <div><strong>비고</strong> ${escapeHtml(note)}</div>
           </div>
-          <div class="delivery-list-footer">
+          ${actionHtml ? `<div class="delivery-list-footer">
             ${actionHtml}
-          </div>
+          </div>` : ''}
         </div>`;
     });
 
+    if (selectMode && selectedCount > 0) {
+      html += `
+        <div class="delivery-bulk-action-bar single">
+          <button class="delivery-bulk-primary-btn" onclick="${isPickupAction ? 'bulkProcessDeliveryPickup' : 'bulkProcessDeliveryDriver'}()">${isPickupAction ? '일괄 회수' : '일괄 배송완료'}</button>
+        </div>
+        <div class="delivery-bulk-action-spacer" aria-hidden="true"></div>
+      `;
+    }
     container.innerHTML = html;
   }
 
@@ -2417,7 +2869,7 @@
   }
 
   function openDeliveryDetail(rowNo) {
-    const item = (deliveryListCache || []).find(function (x) {
+    const item = (getActiveDeliveryListCache() || []).find(function (x) {
       return Number(x.rowNo) === Number(rowNo);
     });
     if (!item) return;

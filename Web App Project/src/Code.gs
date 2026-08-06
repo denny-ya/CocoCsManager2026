@@ -1069,6 +1069,10 @@ function getDeliveryList(sessionToken, filters) {
           target = [item.destBranch, item.destAddress, item.destManual].join(' ');
         } else if (searchKey === 'requester') {
           target = item.requesterName;
+        } else if (searchKey === 'cart') {
+          target = item.contentsCart;
+        } else if (searchKey === 'material') {
+          target = item.contentsMaterial;
         }
         if (!normalizeText(target).includes(searchValue)) continue;
       }
@@ -1270,6 +1274,146 @@ function markDeliveryCompleted(sessionToken, rowNo) {
   }
 }
 
+function validateBulkDeliveryPickupRows_(sheet, rowIndexes) {
+  if (!rowIndexes || rowIndexes.length === 0) {
+    return { success: false, message: '선택된 항목이 없습니다.' };
+  }
+  if (rowIndexes.length > 100) {
+    return { success: false, message: '한 번에 처리할 수 있는 항목은 최대 100건입니다.' };
+  }
+
+  for (let i = 0; i < rowIndexes.length; i++) {
+    const rowIndex = rowIndexes[i];
+    const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
+    if (currentStatus !== '배차승인') {
+      return {
+        success: false,
+        message: '선택한 항목 중 배차승인 상태가 아닌 건이 있습니다. 목록을 새로고침 후 다시 시도해주세요.'
+      };
+    }
+    if (getDeliveryCancelRequestFlag_(sheet.getRange(rowIndex, 22).getValue())) { // V
+      return {
+        success: false,
+        message: '선택한 항목 중 취소 요청된 건이 있습니다. 목록을 새로고침 후 다시 시도해주세요.'
+      };
+    }
+  }
+  return { success: true };
+}
+
+function validateBulkDeliveryCompleteRows_(sheet, rowIndexes, empId, empName) {
+  if (!rowIndexes || rowIndexes.length === 0) {
+    return { success: false, message: '선택된 항목이 없습니다.' };
+  }
+  if (rowIndexes.length > 100) {
+    return { success: false, message: '한 번에 처리할 수 있는 항목은 최대 100건입니다.' };
+  }
+
+  for (let i = 0; i < rowIndexes.length; i++) {
+    const rowIndex = rowIndexes[i];
+    const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
+    if (currentStatus !== '이동 중') {
+      return {
+        success: false,
+        message: '선택한 항목 중 이동 중 상태가 아닌 건이 있습니다. 목록을 새로고침 후 다시 시도해주세요.'
+      };
+    }
+
+    const pickupEmpName = String(sheet.getRange(rowIndex, 18).getValue() || '').trim(); // R
+    if (pickupEmpName && pickupEmpName !== empName && pickupEmpName !== empId) {
+      return {
+        success: false,
+        message: '선택한 항목 중 본인이 회수하지 않은 건이 있습니다. 목록을 새로고침 후 다시 시도해주세요.'
+      };
+    }
+  }
+  return { success: true };
+}
+
+/**
+ * 기사 일괄 회수 처리
+ * 배차승인 -> 이동 중
+ */
+function bulkMarkDeliveryInTransit(sessionToken, rowNos) {
+  const lock = LockService.getScriptLock();
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasDriverPickupPermission_(auth.session.permissions)) return { success: false, message: '기사 회수 권한이 없습니다.' };
+
+    const rowIndexes = normalizeDeliveryRowNos_(rowNos);
+    const empId = String(auth.session.employeeId || '').trim();
+    const empName = String(auth.session.userName || '').trim();
+    if (!empName) return { success: false, message: '기사 계정 정보가 없습니다.' };
+
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+
+    lock.waitLock(10000);
+    ensureDeliveryCancelColumns_(sheet);
+    const validation = validateBulkDeliveryPickupRows_(sheet, rowIndexes);
+    if (!validation.success) return validation;
+
+    const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
+    rowIndexes.forEach(function(rowIndex) {
+      sheet.getRange(rowIndex, 17).setValue('이동 중'); // Q
+      sheet.getRange(rowIndex, 18).setValue(empId || empName); // R
+      sheet.getRange(rowIndex, 19).setValue(now); // S
+    });
+
+    return { success: true, message: rowIndexes.length + '건이 회수 처리되었습니다.', count: rowIndexes.length };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (e) {
+      // Lock이 획득되지 않은 상태의 release 오류는 무시합니다.
+    }
+  }
+}
+
+/**
+ * 기사 일괄 배송완료 처리
+ * 이동 중 -> 배송완료
+ */
+function bulkMarkDeliveryCompleted(sessionToken, rowNos) {
+  const lock = LockService.getScriptLock();
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasDriverDeliveryPermission_(auth.session.permissions)) return { success: false, message: '기사 배송 권한이 없습니다.' };
+
+    const rowIndexes = normalizeDeliveryRowNos_(rowNos);
+    const empId = String(auth.session.employeeId || '').trim();
+    const empName = String(auth.session.userName || '').trim();
+    if (!empName) return { success: false, message: '기사 계정 정보가 없습니다.' };
+
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+
+    lock.waitLock(10000);
+    const validation = validateBulkDeliveryCompleteRows_(sheet, rowIndexes, empId, empName);
+    if (!validation.success) return validation;
+
+    const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
+    rowIndexes.forEach(function(rowIndex) {
+      sheet.getRange(rowIndex, 17).setValue('배송완료'); // Q
+      sheet.getRange(rowIndex, 20).setValue(now); // T
+    });
+
+    return { success: true, message: rowIndexes.length + '건이 배송완료 처리되었습니다.', count: rowIndexes.length };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (e) {
+      // Lock이 획득되지 않은 상태의 release 오류는 무시합니다.
+    }
+  }
+}
+
 /**
  * 배차 승인 처리
  */
@@ -1296,6 +1440,118 @@ function approveDeliveryRequest(sessionToken, rowNo) {
     return { success: true, message: '배차 승인 처리되었습니다.', approvedDate: today };
   } catch (e) {
     return { success: false, message: e.toString() };
+  }
+}
+
+function normalizeDeliveryRowNos_(rowNos) {
+  const seen = {};
+  const rows = [];
+  (rowNos || []).forEach(function(rowNo) {
+    const rowIndex = Number(rowNo);
+    if (!rowIndex || rowIndex < 2) return;
+    if (seen[rowIndex]) return;
+    seen[rowIndex] = true;
+    rows.push(rowIndex);
+  });
+  return rows;
+}
+
+function validateBulkDeliveryApplyRows_(sheet, rowIndexes) {
+  if (!rowIndexes || rowIndexes.length === 0) {
+    return { success: false, message: '선택된 항목이 없습니다.' };
+  }
+  if (rowIndexes.length > 100) {
+    return { success: false, message: '한 번에 처리할 수 있는 항목은 최대 100건입니다.' };
+  }
+
+  for (let i = 0; i < rowIndexes.length; i++) {
+    const rowIndex = rowIndexes[i];
+    const currentStatus = normalizeDeliveryStatus(sheet.getRange(rowIndex, 17).getValue()); // Q
+    if (currentStatus !== '배차신청') {
+      return {
+        success: false,
+        message: '선택한 항목 중 배차신청 상태가 아닌 건이 있습니다. 목록을 새로고침 후 다시 시도해주세요.'
+      };
+    }
+  }
+  return { success: true };
+}
+
+/**
+ * 배차 일괄 승인 처리
+ */
+function bulkApproveDeliveryRequests(sessionToken, rowNos) {
+  const lock = LockService.getScriptLock();
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasDeliveryManagePermission_(auth.session.permissions)) return { success: false, message: '배차 승인 권한이 없습니다.' };
+
+    const rowIndexes = normalizeDeliveryRowNos_(rowNos);
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+
+    lock.waitLock(10000);
+    const validation = validateBulkDeliveryApplyRows_(sheet, rowIndexes);
+    if (!validation.success) return validation;
+
+    const today = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd');
+    rowIndexes.forEach(function(rowIndex) {
+      sheet.getRange(rowIndex, 15).setValue(today); // O
+      sheet.getRange(rowIndex, 17).setValue('배차승인'); // Q
+    });
+
+    return { success: true, message: rowIndexes.length + '건이 배차 승인 처리되었습니다.', count: rowIndexes.length };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (e) {
+      // Lock이 획득되지 않은 상태의 release 오류는 무시합니다.
+    }
+  }
+}
+
+/**
+ * 배차 일괄 취소 처리
+ * 배차신청 -> 배차취소
+ */
+function bulkCancelDeliveryRequests(sessionToken, rowNos) {
+  const lock = LockService.getScriptLock();
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasDeliveryManagePermission_(auth.session.permissions)) return { success: false, message: '배차 취소 권한이 없습니다.' };
+
+    const rowIndexes = normalizeDeliveryRowNos_(rowNos);
+    const empId = String(auth.session.employeeId || '').trim();
+    const empName = String(auth.session.userName || '').trim();
+    const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
+    const sheet = ss.getSheets()[0];
+
+    lock.waitLock(10000);
+    ensureDeliveryCancelColumns_(sheet);
+    const validation = validateBulkDeliveryApplyRows_(sheet, rowIndexes);
+    if (!validation.success) return validation;
+
+    const now = Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd HH:mm');
+    rowIndexes.forEach(function(rowIndex) {
+      sheet.getRange(rowIndex, 17).setValue('배차취소'); // Q
+      sheet.getRange(rowIndex, 26).setValue(now); // Z
+      sheet.getRange(rowIndex, 27).setValue(empId); // AA
+      sheet.getRange(rowIndex, 28).setValue(empName); // AB
+    });
+
+    return { success: true, message: rowIndexes.length + '건이 배차 취소 처리되었습니다.', count: rowIndexes.length };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (e) {
+      // Lock이 획득되지 않은 상태의 release 오류는 무시합니다.
+    }
   }
 }
 

@@ -1,0 +1,68 @@
+<div id="asDailyStatsView" class="as-daily-page" style="display: none;">
+  <div class="as-daily-appbar">
+    <button type="button" class="as-daily-back-btn" onclick="showMainView()" aria-label="뒤로가기">
+      <span class="material-icons">arrow_back</span>
+    </button>
+    <div>
+      <div class="as-daily-eyebrow">실적 및 통계</div>
+      <h2 class="as-daily-title">AS 일일실적</h2>
+    </div>
+  </div>
+
+  <div class="as-daily-content">
+    <section class="as-daily-filter-card">
+      <div class="as-daily-filter-grid">
+        <label class="as-daily-field">
+          <span>기준일</span>
+          <input type="date" id="asDailyDate">
+        </label>
+
+        <label class="as-daily-field">
+          <span>파트</span>
+          <select id="asDailyPart" onchange="handleAsDailyPartChange()">
+            <option value="전체">전체</option>
+            <option value="서비스1">서비스1</option>
+            <option value="서비스2">서비스2</option>
+            <option value="서비스3">서비스3</option>
+            <option value="서비스4">서비스4</option>
+            <option value="서비스팩토리">서비스팩토리</option>
+          </select>
+        </label>
+
+        <label class="as-daily-field">
+          <span>수리구분</span>
+          <select id="asDailyRepairType">
+            <option value="경수리">경수리</option>
+            <option value="중수리">중수리</option>
+          </select>
+        </label>
+      </div>
+
+      <button type="button" class="as-daily-search-btn" onclick="loadAsDailyStats()">
+        <span class="material-icons">search</span>
+        검색
+      </button>
+      <p class="as-daily-filter-note">서비스팩토리는 중수리만 선택 가능합니다.</p>
+    </section>
+
+    <section id="asDailySummary" class="as-daily-summary">
+      <div class="as-daily-empty">
+        <span class="material-icons">query_stats</span>
+        <p>검색 조건을 선택한 뒤 일일실적을 조회해주세요</p>
+      </div>
+    </section>
+
+    <section class="as-daily-detail-section">
+      <div class="as-daily-section-title">
+        <span>상세 실적</span>
+        <small id="asDailyDetailCount">0건</small>
+      </div>
+      <div id="asDailyRows" class="as-daily-rows">
+        <div class="as-daily-empty compact">
+          <span class="material-icons">bar_chart</span>
+          <p>조회된 상세 데이터가 없습니다</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>

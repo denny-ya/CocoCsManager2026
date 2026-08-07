@@ -111,6 +111,8 @@ const BS_SPREADSHEET_ID = '1uhkhWWBzvleJwKR_D-VAWXNWq7O3JwB4fib7vKZ52iY';
 const BRANCH_ADDRESS_SPREADSHEET_ID = '10vY7bq8AXW3XkimW-ibyOGh4LaWRCLaR1Df69Iy9Lt0';
 const DELIVERY_SPREADSHEET_ID = '1IiUSZmNSG8PCZJtyNPNqE1ZXByRIpHJSOeuX6X9H3qc';
 const INSTALL_INFO_SPREADSHEET_ID = '1rdWEaYLMLqVjluW6wkB48Xg54k6Cza_4od8IC7TpKeo';
+const AS_DAILY_STATS_SPREADSHEET_ID = '1OeNfrMuR6U_EQPuUIHGCEj31BFDGHGc74uMyiM6wY9c';
+const AS_DAILY_SUMMARY_SHEET_NAME = 'AS_DAILY_SUMMARY';
 const BS_SERVICE_SHEETS = ['서비스1', '서비스2', '서비스3', '서비스4'];
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8시간
 const PASSWORD_HASH_PREFIX = 'sha256';
@@ -161,6 +163,10 @@ function hasBsPermission_(permissions) {
 
 function hasInstallInfoPermission_(permissions) {
   return !!(permissions && isAllowedFlag_(permissions.installInfo));
+}
+
+function hasStatsPermission_(permissions) {
+  return !!(permissions && isAllowedFlag_(permissions.stats));
 }
 
 function createSessionToken_(employeeId, userName, userPhone, permissions) {
@@ -2015,5 +2021,166 @@ function calcDaysFromDateString_(dateText, baseDate) {
 function decideWarrantyType_(usageDays, warrantyDays) {
   if (usageDays < 0 || warrantyDays <= 0) return '-';
   return usageDays < warrantyDays ? '무상' : '유상';
+}
+
+/**
+ * AS 일일실적 조회
+ * 데이터시트의 AS_DAILY_SUMMARY 결과값만 읽어 웹앱 화면에 전달합니다.
+ */
+function getAsDailyStats(sessionToken, targetDate, partFilter, repairTypeFilter) {
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message, summary: null, rows: [] };
+    if (!hasStatsPermission_(auth.session.permissions)) {
+      return { success: false, message: '실적 통계 조회 권한이 없습니다.', summary: null, rows: [] };
+    }
+
+    const ss = SpreadsheetApp.openById(AS_DAILY_STATS_SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(AS_DAILY_SUMMARY_SHEET_NAME);
+    if (!sheet) {
+      return { success: false, message: 'AS_DAILY_SUMMARY 시트를 찾을 수 없습니다.', summary: null, rows: [] };
+    }
+
+    const values = sheet.getDataRange().getDisplayValues();
+    if (values.length < 2) {
+      return { success: false, message: '실적 데이터가 없습니다. 데이터시트에서 실적 업데이트를 먼저 실행해주세요.', summary: null, rows: [] };
+    }
+
+    const headerIndex = buildHeaderIndex_(values[0]);
+    const selectedDate = String(targetDate || '').trim() || inferLatestAsDailyDate_(values, headerIndex);
+    const selectedPart = String(partFilter || '전체').trim();
+    const selectedRepairType = selectedPart === '서비스팩토리'
+      ? '중수리'
+      : String(repairTypeFilter || '경수리').trim();
+
+    if (!selectedDate) {
+      return { success: false, message: '조회 가능한 기준일이 없습니다.', summary: null, rows: [] };
+    }
+
+    const rows = [];
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      if (getAsDailyCell_(row, headerIndex, '기준일') !== selectedDate) continue;
+      if (getAsDailyCell_(row, headerIndex, '파트필터') !== selectedPart) continue;
+      if (getAsDailyCell_(row, headerIndex, '수리구분필터') !== selectedRepairType) continue;
+      if (!isAsDailyVisible_(getAsDailyCell_(row, headerIndex, '표시여부'))) continue;
+      rows.push(mapAsDailySummaryRow_(row, headerIndex));
+    }
+
+    if (rows.length === 0) {
+      return {
+        success: false,
+        message: '선택한 조건에 맞는 실적 데이터가 없습니다.',
+        targetDate: selectedDate,
+        partFilter: selectedPart,
+        repairTypeFilter: selectedRepairType,
+        summary: null,
+        rows: []
+      };
+    }
+
+    const summary = selectAsDailySummaryRow_(rows, selectedPart);
+    const detailRows = rows.filter(function (row) {
+      if (row === summary) return false;
+      return row.rowType !== 'TOTAL';
+    });
+
+    return {
+      success: true,
+      targetDate: selectedDate,
+      targetMonth: summary.targetMonth || '',
+      partFilter: selectedPart,
+      repairTypeFilter: selectedRepairType,
+      summary: summary,
+      rows: detailRows.length ? detailRows : rows
+    };
+  } catch (e) {
+    return { success: false, message: e.toString(), summary: null, rows: [] };
+  }
+}
+
+function buildHeaderIndex_(headers) {
+  const index = {};
+  (headers || []).forEach(function (header, i) {
+    const key = String(header || '').trim();
+    if (key) index[key] = i;
+  });
+  return index;
+}
+
+function getAsDailyCell_(row, headerIndex, headerName) {
+  const col = headerIndex[headerName];
+  if (col === undefined || col < 0) return '';
+  return String(row[col] || '').trim();
+}
+
+function parseAsDailyNumber_(value) {
+  const text = String(value || '').replace(/,/g, '').trim();
+  if (!text || text === '-') return 0;
+  const num = Number(text);
+  return isNaN(num) ? 0 : num;
+}
+
+function inferLatestAsDailyDate_(values, headerIndex) {
+  let latest = '';
+  for (let i = 1; i < values.length; i++) {
+    const dateText = getAsDailyCell_(values[i], headerIndex, '기준일');
+    if (dateText && dateText > latest) latest = dateText;
+  }
+  return latest;
+}
+
+function isAsDailyVisible_(value) {
+  const text = String(value || '').trim().toLowerCase();
+  return !(text === 'false' || text === 'n' || text === 'no' || text === 'x' || text === '0');
+}
+
+function mapAsDailySummaryRow_(row, headerIndex) {
+  return {
+    targetDate: getAsDailyCell_(row, headerIndex, '기준일'),
+    targetMonth: getAsDailyCell_(row, headerIndex, '기준월'),
+    partFilter: getAsDailyCell_(row, headerIndex, '파트필터'),
+    repairTypeFilter: getAsDailyCell_(row, headerIndex, '수리구분필터'),
+    displayOrder: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '표시순서')),
+    rowType: getAsDailyCell_(row, headerIndex, 'rowType'),
+    displayName: getAsDailyCell_(row, headerIndex, '표시명'),
+    part: getAsDailyCell_(row, headerIndex, '파트'),
+    centerName: getAsDailyCell_(row, headerIndex, '센터명'),
+    masterCode: getAsDailyCell_(row, headerIndex, '담당마스터코드'),
+    masterName: getAsDailyCell_(row, headerIndex, '담당마스터'),
+    receiptDaily: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '접수당일')),
+    receiptMonthly: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '접수누적')),
+    completeDaily: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '완료당일')),
+    completeMonthly: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '완료누적')),
+    noVisitDaily: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '미출동당일')),
+    noVisitMonthly: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '미출동누적')),
+    visitDaily: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '출동당일')),
+    visitMonthly: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '출동누적')),
+    incompleteTotal: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '미완료계')),
+    waiting: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '접수대기')),
+    incomplete: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '미완료')),
+    longIncomplete: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '미완료4일이상') || getAsDailyCell_(row, headerIndex, '장기미완료')),
+    leadAverage: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '리드타임평균')),
+    cancelDaily: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '접수취소당일')),
+    cancelMonthly: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '접수취소누적')),
+    cancelDisplay: getAsDailyCell_(row, headerIndex, '취소표시'),
+    validation: getAsDailyCell_(row, headerIndex, '데이터검증')
+  };
+}
+
+function selectAsDailySummaryRow_(rows, selectedPart) {
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].rowType === 'TOTAL') return rows[i];
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].displayName === selectedPart || rows[i].part === selectedPart) return rows[i];
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].rowType === 'PART' || rows[i].rowType === 'CENTER' || rows[i].rowType === 'FACTORY') return rows[i];
+  }
+
+  return rows[0];
 }
 

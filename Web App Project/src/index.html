@@ -9,6 +9,7 @@
   <?!= include('InstallInfoStyle'); ?>
   <?!= include('BranchAddressStyle'); ?>
   <?!= include('DeliveryManagementStyle'); ?>
+  <?!= include('AsDailyStatsStyle'); ?>
   <!-- 외부 라이브러리 의존성 제거 (네이티브 BarcodeDetector 사용) -->
 </head>
 
@@ -153,6 +154,9 @@
 
     <!-- 부품 장착 정보 화면 -->
     <?!= include('InstallInfo'); ?>
+
+    <!-- AS 일일실적 화면 -->
+    <?!= include('AsDailyStats'); ?>
 
     <!-- 업무 가이드 화면 (iframe 임베드) -->
     <div id="guideView" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:999; background:#1a1a2e; flex-direction:column;">

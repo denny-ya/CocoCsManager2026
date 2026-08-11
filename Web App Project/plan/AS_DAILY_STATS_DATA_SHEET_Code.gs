@@ -40,6 +40,8 @@ const AS_HEADERS = {
     '상태구분',
     '접수구분',
     '접수분류',
+    '차대번호',
+    '영업점',
     '원본파트',
     '담당마스터코드',
     '담당마스터',
@@ -110,6 +112,7 @@ const AS_RAW_REQUIRED_HEADERS = [
   '접수번호',
   '접수구분',
   '접수분류',
+  '차대번호',
   '파트',
   '담당마스터코드',
   '담당마스터',
@@ -125,9 +128,7 @@ const AS_RAW_REQUIRED_HEADERS = [
   '완료시간',
   '접수취소일자',
   '접수취소시간',
-  '리드타임(고객)',
-  '리드타임(센터)',
-  '리드타임(이관)'
+  '영업점'
 ];
 
 const AS_LIGHT_DONE_STATUSES = {
@@ -435,10 +436,13 @@ function buildAsDailyWorkRow_(row, index, masterLookup, targetDate) {
   const status = getCell_(row, index, '상태구분');
   const applyType = getCell_(row, index, '접수구분');
   const category = getCell_(row, index, '접수분류');
+  const vin = getCell_(row, index, '차대번호');
+  const salesPoint = getCell_(row, index, '영업점');
   const rawPart = getCell_(row, index, '파트');
   const rawMasterCode = getCell_(row, index, '담당마스터코드');
   const rawMasterName = getCell_(row, index, '담당마스터');
-  const receiptDate = normalizeDateText_(getCell_(row, index, '접수일자'));
+  const rawReceiptDate = normalizeDateText_(getCell_(row, index, '접수일자'));
+  const transferDate = normalizeDateText_(getCell_(row, index, '이관일자'));
   const doneDate = normalizeDateText_(getCell_(row, index, '완료일자'));
   const cancelDate = normalizeDateText_(getCell_(row, index, '접수취소일자'));
   const centerDate = normalizeDateText_(getCell_(row, index, '센터수리일자'));
@@ -458,6 +462,7 @@ function buildAsDailyWorkRow_(row, index, masterLookup, targetDate) {
   }
 
   const classification = classifyAsRow_(row, index);
+  const receiptDate = getAsDailyWorkReceiptDate_(classification, rawReceiptDate, transferDate, notes);
   let partGroup = rawPart;
   let centerName = mapped ? mapped.centerName : '';
   let rowType = mapped ? 'MASTER' : '';
@@ -474,8 +479,8 @@ function buildAsDailyWorkRow_(row, index, masterLookup, targetDate) {
   if (!masterName && !classification.serviceFactory) notes.push('담당자 누락');
   if ((masterName || masterCode) && !mapped && !classification.serviceFactory) notes.push('담당자 매핑 누락');
 
-  const customerLeadDays = parseDurationDays_(getCell_(row, index, '리드타임(고객)'));
-  const centerLeadDays = parseDurationDays_(getCell_(row, index, '리드타임(센터)'));
+  const customerLeadDays = calcCustomerLeadDays_(row, index, classification, notes);
+  const centerLeadDays = calcCenterLeadDays_(row, index, classification, notes);
   const factoryLeadDays = calcFactoryLeadDays_(row, index, notes);
   const isIncomplete = classification.processStatus === '미완료';
   const isCancel = classification.processStatus === '취소';
@@ -489,6 +494,8 @@ function buildAsDailyWorkRow_(row, index, masterLookup, targetDate) {
     status,
     applyType,
     category,
+    vin,
+    salesPoint,
     rawPart,
     masterCode,
     masterName,
@@ -600,6 +607,17 @@ function classifyAsRow_(row, index) {
     repairType: '경수리',
     serviceFactory: false
   };
+}
+
+function getAsDailyWorkReceiptDate_(classification, rawReceiptDate, transferDate, notes) {
+  if (classification && classification.repairType === '중수리' && classification.serviceFactory) {
+    if (!transferDate) {
+      notes.push('팩토리 이관일 누락');
+      return '';
+    }
+    return transferDate;
+  }
+  return rawReceiptDate;
 }
 
 function buildAsMasterLookup_(ss) {
@@ -856,6 +874,36 @@ function normalizeMaster_(code, name, masterLookup) {
   return { code: rawCode, name: rawName };
 }
 
+function calcCustomerLeadDays_(row, index, classification, notes) {
+  if (!classification || classification.repairType !== '경수리') return '';
+  if (classification.processStatus !== '완료') return '';
+
+  const receiptAt = parseDateTime_(getCell_(row, index, '접수일자'), getCell_(row, index, '접수시간'));
+  const doneAt = parseDateTime_(getCell_(row, index, '완료일자'), getCell_(row, index, '완료시간'));
+  if (!receiptAt || !doneAt) {
+    notes.push('경수리 리드타임 계산 제외');
+    return '';
+  }
+
+  const diff = (doneAt.getTime() - receiptAt.getTime()) / (1000 * 60 * 60 * 24);
+  return diff >= 0 ? diff : '';
+}
+
+function calcCenterLeadDays_(row, index, classification, notes) {
+  if (!classification || classification.repairType !== '중수리' || classification.serviceFactory) return '';
+  if (classification.completeType !== '센터완료') return '';
+
+  const receiptAt = parseDateTime_(getCell_(row, index, '접수일자'), getCell_(row, index, '접수시간'));
+  const centerDoneAt = parseDateTime_(getCell_(row, index, '센터수리일자'), getCell_(row, index, '센터수리시간'));
+  if (!receiptAt || !centerDoneAt) {
+    notes.push('센터 리드타임 계산 제외');
+    return '';
+  }
+
+  const diff = (centerDoneAt.getTime() - receiptAt.getTime()) / (1000 * 60 * 60 * 24);
+  return diff >= 0 ? diff : '';
+}
+
 function calcFactoryLeadDays_(row, index, notes) {
   const transferAt = parseDateTime_(getCell_(row, index, '이관일자'), getCell_(row, index, '이관시간'));
   const factoryDoneAt = parseDateTime_(getCell_(row, index, '공장수리완료일자'), getCell_(row, index, '공장수리완료시간'));
@@ -869,29 +917,6 @@ function calcFactoryLeadDays_(row, index, notes) {
 
   const diff = (factoryDoneAt.getTime() - transferAt.getTime()) / (1000 * 60 * 60 * 24);
   return diff >= 0 ? diff : '';
-}
-
-function parseDurationDays_(value) {
-  const text = trimText_(value);
-  if (!text) return '';
-
-  let match = text.match(/^(\d+)\s+days?\s+(\d{1,2}):(\d{1,2}):(\d{1,2})$/);
-  if (match) {
-    return Number(match[1]) +
-      Number(match[2]) / 24 +
-      Number(match[3]) / (24 * 60) +
-      Number(match[4]) / (24 * 60 * 60);
-  }
-
-  match = text.match(/^(\d{1,4}):(\d{1,2}):(\d{1,2})$/);
-  if (match) {
-    return Number(match[1]) / 24 +
-      Number(match[2]) / (24 * 60) +
-      Number(match[3]) / (24 * 60 * 60);
-  }
-
-  const numeric = Number(text);
-  return isNaN(numeric) ? '' : numeric;
 }
 
 function parseDateTime_(dateText, timeText) {
@@ -918,7 +943,12 @@ function inferTargetDateFromRaw_(rawValues, rawIndex) {
   let latest = null;
 
   for (let i = 1; i < rawValues.length; i++) {
-    const date = parseDateOnly_(getCell_(rawValues[i], rawIndex, '접수일자'));
+    const row = rawValues[i];
+    const status = getCell_(row, rawIndex, '상태구분');
+    const dateText = (status === '공장입고수리' || status === '공장수리완료(인수)')
+      ? getCell_(row, rawIndex, '이관일자')
+      : getCell_(row, rawIndex, '접수일자');
+    const date = parseDateOnly_(dateText);
     if (date && (!latest || date.getTime() > latest.getTime())) latest = date;
   }
   return latest;

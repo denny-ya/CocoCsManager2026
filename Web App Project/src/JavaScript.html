@@ -109,6 +109,8 @@
   function hideAsDailyStatsView() {
     const view = document.getElementById('asDailyStatsView');
     if (view) view.style.display = 'none';
+    const modal = document.getElementById('asDailyDetailModal');
+    if (modal) modal.style.display = 'none';
   }
 
   const GUIDE_EMBED_URL = 'https://docs.google.com/presentation/d/1gbsH7E3HobsTIs3K8xRW1g-Oz6GI05005VeyNhshSAI/embed?start=false&loop=false&delayms=0';
@@ -233,6 +235,8 @@
   let currentBsMasterPart = '';
   let currentVinForComplete = '';
   let currentAddressPart = ''; // 영업점 주소록용 파트 보관
+  let currentAsDailyStatsState = null;
+  let currentAsDailyDetailGroupItems = {};
   const LOGIN_STORAGE_EMP_ID_KEY = 'coco_login_emp_id';
   const LOGIN_STORAGE_PASSWORD_KEY = 'coco_login_password';
 
@@ -731,7 +735,8 @@
       history.pushState({ view: 'asDailyStats' }, 'AS Daily Stats');
     }
 
-    loadAsDailyStats();
+    resetAsDailyStatsResults();
+    loadAsDailyDefaultDate();
   }
 
   function handleAsDailyPartChange() {
@@ -745,6 +750,56 @@
     } else {
       repairTypeEl.disabled = false;
     }
+  }
+
+  function loadAsDailyDefaultDate() {
+    if (!ensureSessionToken()) return;
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        const dateEl = document.getElementById('asDailyDate');
+        if (res && res.success && dateEl) {
+          dateEl.value = res.targetDate || '';
+          return;
+        }
+        renderAsDailyDefaultDateError((res && res.message) ? res.message : '최신 기준일을 불러오지 못했습니다.');
+      })
+      .withFailureHandler(function (err) {
+        renderAsDailyDefaultDateError('최신 기준일 조회 실패: ' + err);
+      })
+      .getAsDailyLatestDate(currentSessionToken);
+  }
+
+  function resetAsDailyStatsResults() {
+    currentAsDailyStatsState = null;
+    const summaryEl = document.getElementById('asDailySummary');
+    const rowsEl = document.getElementById('asDailyRows');
+    const countEl = document.getElementById('asDailyDetailCount');
+    if (summaryEl) {
+      summaryEl.innerHTML = `
+        <div class="as-daily-empty">
+          <span class="material-icons">query_stats</span>
+          <p>검색 조건을 선택한 뒤 일일실적을 조회해주세요</p>
+        </div>`;
+    }
+    if (rowsEl) {
+      rowsEl.innerHTML = `
+        <div class="as-daily-empty compact">
+          <span class="material-icons">bar_chart</span>
+          <p>조회된 상세 데이터가 없습니다</p>
+        </div>`;
+    }
+    if (countEl) countEl.innerText = '0건';
+  }
+
+  function renderAsDailyDefaultDateError(message) {
+    const summaryEl = document.getElementById('asDailySummary');
+    if (!summaryEl) return;
+    summaryEl.innerHTML = `
+      <div class="as-daily-empty">
+        <span class="material-icons">event_busy</span>
+        <p>${escapeHtml(message || '최신 기준일을 불러오지 못했습니다.')}</p>
+      </div>`;
   }
 
   function loadAsDailyStats() {
@@ -783,6 +838,11 @@
     if (partEl && res.partFilter) partEl.value = res.partFilter;
     if (repairTypeEl && res.repairTypeFilter) repairTypeEl.value = res.repairTypeFilter;
     handleAsDailyPartChange();
+    currentAsDailyStatsState = {
+      targetDate: res.targetDate || '',
+      partFilter: res.partFilter || '전체',
+      repairTypeFilter: res.repairTypeFilter || '경수리'
+    };
 
     renderAsDailySummary(res);
     renderAsDailyRows(res.rows || [], res);
@@ -828,18 +888,18 @@
           </div>
 
           <div class="as-daily-primary-kpis">
-            <div class="as-daily-primary-kpi">
+            <button type="button" class="as-daily-primary-kpi as-daily-primary-kpi-button" data-as-daily-detail="receiptDaily">
               <span>접수</span>
               <strong>${formatAsDailyNumber(s.receiptDaily)}</strong>
-            </div>
-            <div class="as-daily-primary-kpi">
+            </button>
+            <button type="button" class="as-daily-primary-kpi as-daily-primary-kpi-button" data-as-daily-detail="completeDaily">
               <span>완료</span>
               <strong>${formatAsDailyNumber(s.completeDaily)}</strong>
-            </div>
-            <div class="as-daily-primary-kpi">
+            </button>
+            <button type="button" class="as-daily-primary-kpi as-daily-primary-kpi-button" data-as-daily-detail="incomplete">
               <span>미완료</span>
               <strong>${formatAsDailyNumber(s.incompleteTotal)}</strong>
-            </div>
+            </button>
           </div>
         </div>
 
@@ -852,32 +912,363 @@
             <span>완료 누적</span>
             <strong>${formatAsDailyNumber(s.completeMonthly)}</strong>
           </div>
-          <div class="as-daily-kpi-box">
+          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="visitDaily">
             <span>미출동 / 출동</span>
             <strong>${formatAsDailyNumber(s.noVisitDaily)} / ${formatAsDailyNumber(s.visitDaily)}</strong>
-          </div>
-          <div class="as-daily-kpi-box warning">
+          </button>
+          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button warning" data-as-daily-detail="cancelDaily">
             <span>접수취소</span>
             <strong>${formatAsDailyNumber(s.cancelDaily)}</strong>
-          </div>
-          <div class="as-daily-kpi-box">
+          </button>
+          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="waiting">
             <span>접수대기</span>
             <strong>${formatAsDailyNumber(s.waiting)}</strong>
-          </div>
-          <div class="as-daily-kpi-box warning">
+          </button>
+          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button warning" data-as-daily-detail="longIncomplete">
             <span>30일 이상</span>
             <strong>${formatAsDailyNumber(s.longIncomplete)}</strong>
-          </div>
+          </button>
           <div class="as-daily-kpi-box">
             <span>리드타임 평균</span>
             <strong>${formatAsDailyLead(s.leadAverage)}</strong>
           </div>
-          <div class="as-daily-kpi-box">
+          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="cancelMonthly">
             <span>취소 누적</span>
             <strong>${formatAsDailyNumber(s.cancelMonthly)}</strong>
-          </div>
+          </button>
         </div>
       </div>`;
+
+    bindAsDailyDetailButtons(summaryEl);
+  }
+
+  function bindAsDailyDetailButtons(rootEl) {
+    if (!rootEl) return;
+    rootEl.querySelectorAll('[data-as-daily-detail]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        openAsDailyDetail(button.getAttribute('data-as-daily-detail'));
+      });
+    });
+  }
+
+  function openAsDailyDetail(detailType, scope) {
+    if (!ensureSessionToken()) return;
+
+    const state = currentAsDailyStatsState || {};
+    const targetDate = state.targetDate || (document.getElementById('asDailyDate') ? document.getElementById('asDailyDate').value : '');
+    const partFilter = state.partFilter || (document.getElementById('asDailyPart') ? document.getElementById('asDailyPart').value : '전체');
+    const repairTypeFilter = state.repairTypeFilter || (document.getElementById('asDailyRepairType') ? document.getElementById('asDailyRepairType').value : '경수리');
+
+    if (!targetDate) {
+      alert('먼저 기준일을 선택하고 검색해주세요.');
+      return;
+    }
+
+    showAsDailyDetailLoading(getAsDailyDetailTitle(detailType), targetDate, partFilter, repairTypeFilter);
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        renderAsDailyDetailModal(res, detailType);
+      })
+      .withFailureHandler(function (err) {
+        renderAsDailyDetailModal({
+          success: false,
+          message: '상세 조회 실패: ' + err,
+          title: getAsDailyDetailTitle(detailType),
+          items: []
+        }, detailType);
+      })
+      .getAsDailyStatsDetail(currentSessionToken, targetDate, partFilter, repairTypeFilter, detailType, scope || null);
+  }
+
+  function showAsDailyDetailLoading(title, targetDate, partFilter, repairTypeFilter) {
+    const modal = ensureAsDailyDetailModal();
+    const titleEl = document.getElementById('asDailyDetailModalTitle');
+    const metaEl = document.getElementById('asDailyDetailModalMeta');
+    const bodyEl = document.getElementById('asDailyDetailModalBody');
+    if (titleEl) titleEl.innerText = title || '상세 목록';
+    if (metaEl) metaEl.innerText = `${targetDate || '-'} · ${partFilter || '전체'} · ${repairTypeFilter || '-'}`;
+    if (bodyEl) bodyEl.innerHTML = '<div class="as-daily-detail-loading">상세 데이터를 불러오는 중입니다...</div>';
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function renderAsDailyDetailModal(res, detailType) {
+    ensureAsDailyDetailModal();
+    currentAsDailyDetailGroupItems = {};
+    const titleEl = document.getElementById('asDailyDetailModalTitle');
+    const metaEl = document.getElementById('asDailyDetailModalMeta');
+    const bodyEl = document.getElementById('asDailyDetailModalBody');
+    if (!bodyEl) return;
+
+    const title = (res && res.title) || getAsDailyDetailTitle(detailType);
+    if (titleEl) titleEl.innerText = `${title} ${formatAsDailyNumber((res && res.count) || 0)}건`;
+    if (metaEl && res) {
+      metaEl.innerText = `${res.targetDate || '-'} · ${res.partFilter || '전체'} · ${res.repairTypeFilter || '-'}`;
+    }
+
+    if (!res || !res.success) {
+      bodyEl.innerHTML = `
+        <div class="as-daily-detail-empty">
+          <span class="material-icons">error_outline</span>
+          <p>${escapeHtml((res && res.message) ? res.message : '상세 조회에 실패했습니다.')}</p>
+        </div>`;
+      return;
+    }
+
+    const items = Array.isArray(res.items) ? res.items : [];
+    if (items.length === 0) {
+      bodyEl.innerHTML = `
+        <div class="as-daily-detail-empty">
+          <span class="material-icons">fact_check</span>
+          <p>해당 조건의 상세 건이 없습니다.</p>
+        </div>`;
+      return;
+    }
+
+    const limit = Number(res.limit || 0);
+    const limitNote = res.limited
+      ? `<div class="as-daily-detail-limit">표시 성능을 위해 상위 ${formatAsDailyNumber(limit || items.length)}건만 표시합니다.</div>`
+      : '';
+
+    bodyEl.innerHTML = `
+      ${limitNote}
+      <div class="as-daily-detail-group-list">
+        ${renderAsDailyDetailGroups(items)}
+      </div>`;
+    bindAsDailyDetailGroupToggles(bodyEl);
+  }
+
+  function renderAsDailyDetailGroups(items) {
+    return buildAsDailyDetailGroups(items)
+      .map(renderAsDailyDetailGroup)
+      .join('');
+  }
+
+  function buildAsDailyDetailGroups(items) {
+    const groupMap = {};
+    const orderedKeys = [];
+
+    items.forEach(function (item) {
+      const group = getAsDailyDetailGroupMeta(item);
+      if (!groupMap[group.key]) {
+        groupMap[group.key] = {
+          key: group.key,
+          label: group.label,
+          order: group.order,
+          items: []
+        };
+        orderedKeys.push(group.key);
+      }
+      groupMap[group.key].items.push(item);
+    });
+
+    return orderedKeys
+      .map(function (key) { return groupMap[key]; })
+      .sort(function (a, b) {
+        if (a.order !== b.order) return a.order - b.order;
+        return a.label.localeCompare(b.label, 'ko');
+      });
+  }
+
+  function getAsDailyDetailGroupMeta(item) {
+    const rawPart = String((item && item.partName) || '').trim();
+    const normalized = normalizeAsDailyText(rawPart);
+    const serviceMatch = normalized.match(/서비스([1-4])/);
+    if (serviceMatch) {
+      const serviceNo = Number(serviceMatch[1]);
+      return {
+        key: `service${serviceNo}`,
+        label: `서비스${serviceNo}`,
+        order: serviceNo
+      };
+    }
+    if (normalized.indexOf('서비스팩토리') !== -1 || normalized.indexOf('팩토리') !== -1) {
+      return {
+        key: 'factory',
+        label: '서비스팩토리',
+        order: 5
+      };
+    }
+    return {
+      key: rawPart || 'etc',
+      label: rawPart || '기타',
+      order: 99
+    };
+  }
+
+  function normalizeAsDailyText(value) {
+    return String(value || '').toLowerCase().replace(/\s+/g, '');
+  }
+
+  function renderAsDailyDetailGroup(group) {
+    const items = Array.isArray(group.items) ? group.items : [];
+    currentAsDailyDetailGroupItems[group.key] = items;
+    return `
+      <details class="as-daily-detail-group">
+        <summary class="as-daily-detail-group-summary" data-as-daily-detail-group="${escapeHtml(group.key)}">
+          <div>
+            <span>상세 그룹</span>
+            <strong>${escapeHtml(group.label || '기타')}</strong>
+          </div>
+          <div class="as-daily-detail-group-meta">
+            <b>${formatAsDailyNumber(items.length)}건</b>
+            <span class="material-icons">expand_more</span>
+          </div>
+        </summary>
+        <div class="as-daily-detail-list" data-as-daily-detail-group-body="${escapeHtml(group.key)}">
+          <div class="as-daily-detail-group-placeholder">펼치면 상세 목록을 표시합니다.</div>
+        </div>
+      </details>`;
+  }
+
+  function bindAsDailyDetailGroupToggles(rootEl) {
+    if (!rootEl) return;
+    rootEl.querySelectorAll('.as-daily-detail-group').forEach(function (groupEl) {
+      groupEl.addEventListener('toggle', function () {
+        if (!groupEl.open) return;
+        const summaryEl = groupEl.querySelector('[data-as-daily-detail-group]');
+        const key = summaryEl ? summaryEl.getAttribute('data-as-daily-detail-group') : '';
+        renderAsDailyDetailGroupBody(key, groupEl);
+      });
+    });
+  }
+
+  function renderAsDailyDetailGroupBody(groupKey, groupEl) {
+    if (!groupKey || !groupEl) return;
+    const bodyEl = groupEl.querySelector(`[data-as-daily-detail-group-body="${cssEscape(groupKey)}"]`);
+    if (!bodyEl || bodyEl.getAttribute('data-rendered') === '1') return;
+
+    const items = currentAsDailyDetailGroupItems[groupKey] || [];
+    bodyEl.innerHTML = items.length
+      ? items.map(renderAsDailyDetailItem).join('')
+      : '<div class="as-daily-detail-group-placeholder">표시할 상세 목록이 없습니다.</div>';
+    bodyEl.setAttribute('data-rendered', '1');
+  }
+
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(String(value || ''));
+    }
+    return String(value || '').replace(/["\\]/g, '\\$&');
+  }
+
+  function renderAsDailyDetailItem(item) {
+    const category = String(item.category || '').trim();
+    const categoryClass = category === '미출동' ? ' no-visit' : (category === '출동' ? ' visit' : '');
+    const elapsedDaysText = item.elapsedDays === '' || item.elapsedDays === null || item.elapsedDays === undefined
+      ? '-'
+      : `${formatAsDailyNumber(item.elapsedDays)}일`;
+    const traceInfoHtml = item.showTraceInfo ? `
+        <div class="as-daily-detail-trace">
+          <div class="as-daily-detail-trace-sales-point">
+            <span>영업점</span>
+            <strong>${escapeHtml(item.salesPoint || '-')}</strong>
+          </div>
+          <div class="as-daily-detail-trace-vin">
+            <span>차대번호</span>
+            <strong>${escapeHtml(item.vin || '-')}</strong>
+          </div>
+          <div class="as-daily-detail-trace-category">
+            <span>접수분류</span>
+            <strong>${escapeHtml(item.receiptCategory || '-')}</strong>
+          </div>
+        </div>` : '';
+    return `
+      <article class="as-daily-detail-item">
+        <div class="as-daily-detail-item-top">
+          <strong>${escapeHtml(item.receiptNo || '-')}</strong>
+          <span class="as-daily-detail-chip${categoryClass}">${escapeHtml(category || '-')}</span>
+        </div>
+        <div class="as-daily-detail-item-main">
+          <div>
+            <span>담당자</span>
+            <strong>${escapeHtml(item.masterName || '-')}</strong>
+          </div>
+          <div>
+            <span>파트</span>
+            <strong>${escapeHtml(item.partName || '-')}</strong>
+          </div>
+          <div>
+            <span>센터</span>
+            <strong>${escapeHtml(item.centerName || '-')}</strong>
+          </div>
+          <div>
+            <span>접수일</span>
+            <strong>${escapeHtml(item.receiptDate || '-')}</strong>
+          </div>
+          <div>
+            <span>경과일</span>
+            <strong class="as-daily-detail-elapsed">${escapeHtml(elapsedDaysText)}</strong>
+          </div>
+          <div>
+            <span>상태</span>
+            <strong>${escapeHtml(item.status || '-')}</strong>
+          </div>
+        </div>
+        ${traceInfoHtml}
+        <div class="as-daily-detail-extra ${isDuplicateAsDailyDetailExtra(item) ? 'is-duplicate' : ''}">
+          <span>${escapeHtml(item.extraLabel || '확인')}</span>
+          <strong>${escapeHtml(item.extraValue || '-')}</strong>
+        </div>
+      </article>`;
+  }
+
+  function isDuplicateAsDailyDetailExtra(item) {
+    const label = String((item && item.extraLabel) || '').trim();
+    return label === '접수일' || label === '경과일';
+  }
+
+  function closeAsDailyDetailModal() {
+    const modal = document.getElementById('asDailyDetailModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function ensureAsDailyDetailModal() {
+    let modal = document.getElementById('asDailyDetailModal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'asDailyDetailModal';
+    modal.className = 'as-daily-detail-modal';
+    modal.style.display = 'none';
+    modal.onclick = closeAsDailyDetailModalOnBackdrop;
+    modal.innerHTML = `
+      <div class="as-daily-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="asDailyDetailModalTitle">
+        <div class="as-daily-detail-modal-head">
+          <div>
+            <div id="asDailyDetailModalMeta" class="as-daily-detail-modal-meta">-</div>
+            <h3 id="asDailyDetailModalTitle">상세 목록</h3>
+          </div>
+          <button type="button" class="as-daily-detail-close" onclick="closeAsDailyDetailModal()" aria-label="닫기">
+            <span class="material-icons">close</span>
+          </button>
+        </div>
+        <div id="asDailyDetailModalBody" class="as-daily-detail-modal-body">
+          <div class="as-daily-detail-loading">상세 데이터를 불러오는 중입니다...</div>
+        </div>
+      </div>`;
+
+    const asDailyView = document.getElementById('asDailyStatsView');
+    (asDailyView || document.body).appendChild(modal);
+    return modal;
+  }
+
+  function closeAsDailyDetailModalOnBackdrop(event) {
+    if (event && event.target && event.target.id === 'asDailyDetailModal') {
+      closeAsDailyDetailModal();
+    }
+  }
+
+  function getAsDailyDetailTitle(detailType) {
+    if (detailType === 'receiptDaily') return '접수 상세';
+    if (detailType === 'completeDaily') return '완료 상세';
+    if (detailType === 'cancelDaily') return '접수취소 상세';
+    if (detailType === 'cancelMonthly') return '취소 누적 상세';
+    if (detailType === 'visitDaily') return '미출동/출동 상세';
+    if (detailType === 'waiting') return '접수대기 상세';
+    if (detailType === 'longIncomplete') return '30일 이상 상세';
+    if (detailType === 'incomplete') return '미완료 상세';
+    return '상세 목록';
   }
 
   function renderAsDailyRows(rows, context) {
@@ -902,8 +1293,10 @@
       const badge = getAsDailyRowTypeLabel(row.rowType);
       const meta = [row.part, row.centerName, row.masterName].filter(function (x) { return !!x; }).join(' / ');
       const childCount = group.children.length;
+      const hasCumulativeSummary = shouldRenderAsDailyCumulativeSummary(row, childCount);
+      const partToneClass = getAsDailyPartToneClass(row);
       return `
-        <details class="as-daily-accordion">
+        <details class="as-daily-accordion ${partToneClass}">
           <summary class="as-daily-accordion-summary">
             <div class="as-daily-row-head">
               <div>
@@ -920,20 +1313,44 @@
           </summary>
 
           <div class="as-daily-accordion-body">
-            <div class="as-daily-child-count">${childCount ? `${childCount}건 상세` : '하위 상세 없음'}</div>
-            ${childCount ? group.children.map(renderAsDailyChildRow).join('') : `
-              <div class="as-daily-child-empty">표시할 하위 상세가 없습니다.</div>
-            `}
+            <div class="as-daily-child-count">${childCount ? `${childCount}건 상세` : (hasCumulativeSummary ? '누적 상세' : '하위 상세 없음')}</div>
+            ${childCount ? group.children.map(renderAsDailyChildRow).join('') : renderAsDailyEmptyBody(row, hasCumulativeSummary)}
           </div>
         </details>`;
     }).join('');
   }
 
+  function shouldRenderAsDailyCumulativeSummary(row, childCount) {
+    if (childCount > 0) return false;
+    const repairType = String(row.repairTypeFilter || '').trim();
+    const rowType = String(row.rowType || '').trim();
+    return repairType === '중수리' && (rowType === 'CENTER' || rowType === 'FACTORY');
+  }
+
+  function renderAsDailyEmptyBody(row, hasCumulativeSummary) {
+    if (hasCumulativeSummary) return renderAsDailyCumulativeSummary(row);
+    return '<div class="as-daily-child-empty">표시할 하위 상세가 없습니다.</div>';
+  }
+
+  function getAsDailyPartToneClass(row) {
+    const text = normalizeAsDailyText([
+      row && row.part,
+      row && row.centerName,
+      row && row.displayName
+    ].filter(function (value) { return !!value; }).join(' '));
+
+    if (text.indexOf('서비스팩토리') !== -1 || text.indexOf('팩토리') !== -1) return 'as-daily-tone-factory';
+    if (text.indexOf('서비스1') !== -1 || text.indexOf('하남') !== -1) return 'as-daily-tone-service1';
+    if (text.indexOf('서비스2') !== -1 || text.indexOf('계양') !== -1) return 'as-daily-tone-service2';
+    if (text.indexOf('서비스3') !== -1 || text.indexOf('부산') !== -1) return 'as-daily-tone-service3';
+    if (text.indexOf('서비스4') !== -1 || text.indexOf('호남') !== -1) return 'as-daily-tone-service4';
+    return 'as-daily-tone-default';
+  }
+
   function buildAsDailyGroups(rows, context) {
     const selectedPart = String((context && context.partFilter) || '전체');
-    const topTypes = selectedPart === '전체'
-      ? ['PART', 'FACTORY']
-      : ['CENTER', 'FACTORY'];
+    const selectedRepairType = String((context && context.repairTypeFilter) || '');
+    const topTypes = getAsDailyTopRowTypes(selectedPart, selectedRepairType);
 
     let topRows = rows.filter(function (row) {
       return topTypes.indexOf(String(row.rowType || '').trim()) !== -1;
@@ -953,6 +1370,12 @@
     });
   }
 
+  function getAsDailyTopRowTypes(selectedPart, selectedRepairType) {
+    if (selectedPart !== '전체') return ['CENTER', 'FACTORY'];
+    if (selectedRepairType === '중수리') return ['CENTER', 'FACTORY'];
+    return ['PART', 'FACTORY'];
+  }
+
   function getAsDailyChildren(rows, topRow, selectedPart) {
     const topType = String(topRow.rowType || '').trim();
 
@@ -962,6 +1385,11 @@
 
       if (selectedPart === '전체') {
         if (rowType === 'PART' || rowType === 'FACTORY') return false;
+        if (topType === 'CENTER') {
+          return rowType === 'MASTER' &&
+            String(row.part || '') === String(topRow.part || '') &&
+            String(row.centerName || '') === String(topRow.centerName || '');
+        }
         return String(row.part || '') === String(topRow.part || '');
       }
 
@@ -1045,6 +1473,32 @@
       </div>`;
   }
 
+  function renderAsDailyCumulativeSummary(row) {
+    return `
+      <div class="as-daily-cumulative-grid">
+        <div class="as-daily-cumulative-item blue">
+          <span>접수 누적</span>
+          <strong>${formatAsDailyNumber(row.receiptMonthly)}</strong>
+        </div>
+        <div class="as-daily-cumulative-item blue">
+          <span>완료 누적</span>
+          <strong>${formatAsDailyNumber(row.completeMonthly)}</strong>
+        </div>
+        <div class="as-daily-cumulative-item warning">
+          <span>미완료</span>
+          <strong>${formatAsDailyNumber(row.incompleteTotal)}</strong>
+        </div>
+        <div class="as-daily-cumulative-item">
+          <span>LT 평균</span>
+          <strong>${formatAsDailyLead(row.leadAverage)}</strong>
+        </div>
+        <div class="as-daily-cumulative-item warning">
+          <span>취소 누적</span>
+          <strong>${formatAsDailyNumber(row.cancelMonthly)}</strong>
+        </div>
+      </div>`;
+  }
+
   function getAsDailyRowTypeLabel(rowType) {
     const type = String(rowType || '').trim();
     if (type === 'TOTAL') return '전체';
@@ -1062,8 +1516,9 @@
   }
 
   function formatAsDailyLead(value) {
-    const num = Number(value || 0);
-    if (isNaN(num) || num <= 0) return '-';
+    if (value === '' || value === null || value === undefined || String(value).trim() === '-') return '-';
+    const num = Number(value);
+    if (isNaN(num) || num < 0) return '-';
     return num.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '일';
   }
 

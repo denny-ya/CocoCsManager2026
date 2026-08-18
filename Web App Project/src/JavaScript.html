@@ -790,6 +790,7 @@
         </div>`;
     }
     if (countEl) countEl.innerText = '0건';
+    setAsDailyDownloadVisible(false);
   }
 
   function renderAsDailyDefaultDateError(message) {
@@ -846,6 +847,7 @@
 
     renderAsDailySummary(res);
     renderAsDailyRows(res.rows || [], res);
+    setAsDailyDownloadVisible(true);
   }
 
   function renderAsDailyError(message) {
@@ -868,6 +870,76 @@
         </div>`;
     }
     if (countEl) countEl.innerText = '0건';
+    setAsDailyDownloadVisible(false);
+  }
+
+  function setAsDailyDownloadVisible(visible) {
+    const areaEl = document.getElementById('asDailyDownloadArea');
+    if (areaEl) areaEl.style.display = visible ? 'block' : 'none';
+    if (!visible) setAsDailyDownloadButtonLoading(false);
+  }
+
+  function setAsDailyDownloadButtonLoading(isLoading) {
+    const buttonEl = document.getElementById('asDailyExcelDownloadBtn');
+    const noteEl = document.getElementById('asDailyDownloadNote');
+    if (buttonEl) {
+      buttonEl.disabled = !!isLoading;
+      buttonEl.innerHTML = isLoading
+        ? '<span class="material-icons">hourglass_top</span> 엑셀 파일 생성 중...'
+        : '<span class="material-icons">download</span> 현재 결과 엑셀 다운로드';
+    }
+    if (noteEl) {
+      noteEl.innerText = isLoading
+        ? '엑셀 파일을 생성 중입니다. 잠시만 기다려주세요.'
+        : '엑셀 파일 생성에는 약 10~30초 정도 소요될 수 있습니다.';
+    }
+  }
+
+  function downloadAsDailyStatsExcel() {
+    if (!ensureSessionToken()) return;
+
+    const state = currentAsDailyStatsState || {};
+    const targetDate = state.targetDate || (document.getElementById('asDailyDate') ? document.getElementById('asDailyDate').value : '');
+    const partFilter = state.partFilter || (document.getElementById('asDailyPart') ? document.getElementById('asDailyPart').value : '전체');
+    const repairTypeFilter = state.repairTypeFilter || (document.getElementById('asDailyRepairType') ? document.getElementById('asDailyRepairType').value : '경수리');
+
+    if (!targetDate) {
+      alert('먼저 기준일을 선택하고 검색해주세요.');
+      return;
+    }
+
+    setAsDailyDownloadButtonLoading(true);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        setAsDailyDownloadButtonLoading(false);
+        if (!res || !res.success) {
+          alert((res && res.message) ? res.message : '엑셀 다운로드에 실패했습니다.');
+          return;
+        }
+        openAsDailyExcelDownload(res.downloadUrl, res.fileName, res.fileUrl);
+      })
+      .withFailureHandler(function (err) {
+        setAsDailyDownloadButtonLoading(false);
+        alert('엑셀 다운로드 실패: ' + err);
+      })
+      .exportAsDailyStatsExcel(currentSessionToken, targetDate, partFilter, repairTypeFilter);
+  }
+
+  function openAsDailyExcelDownload(downloadUrl, fileName, fileUrl) {
+    const url = downloadUrl || fileUrl;
+    if (!url) {
+      alert('다운로드 링크를 생성하지 못했습니다.');
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    if (fileName) link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   function renderAsDailySummary(res) {
@@ -875,6 +947,7 @@
     const s = res.summary || {};
     const title = s.displayName || `${res.partFilter || '전체'} ${res.repairTypeFilter || ''}`;
     const filterText = `${res.partFilter || '전체'} · ${res.repairTypeFilter || '-'}`;
+    const isHeavyRepair = String(res.repairTypeFilter || '').trim() === '중수리';
 
     summaryEl.innerHTML = `
       <div class="as-daily-summary-card">
@@ -887,59 +960,96 @@
             <div class="as-daily-summary-date">${escapeHtml(res.targetDate || '-')}</div>
           </div>
 
-          <div class="as-daily-primary-kpis">
-            <button type="button" class="as-daily-primary-kpi as-daily-primary-kpi-button" data-as-daily-detail="receiptDaily">
-              <span>접수</span>
-              <strong>${formatAsDailyNumber(s.receiptDaily)}</strong>
-            </button>
-            <button type="button" class="as-daily-primary-kpi as-daily-primary-kpi-button" data-as-daily-detail="completeDaily">
-              <span>완료</span>
-              <strong>${formatAsDailyNumber(s.completeDaily)}</strong>
-            </button>
-            <button type="button" class="as-daily-primary-kpi as-daily-primary-kpi-button" data-as-daily-detail="incomplete">
-              <span>미완료</span>
-              <strong>${formatAsDailyNumber(s.incompleteTotal)}</strong>
-            </button>
-          </div>
+          ${renderAsDailyPrimaryKpis(s, isHeavyRepair)}
         </div>
 
-        <div class="as-daily-kpi-grid">
-          <div class="as-daily-kpi-box blue">
-            <span>접수 누적</span>
-            <strong>${formatAsDailyNumber(s.receiptMonthly)}</strong>
-          </div>
-          <div class="as-daily-kpi-box blue">
-            <span>완료 누적</span>
-            <strong>${formatAsDailyNumber(s.completeMonthly)}</strong>
-          </div>
-          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="visitDaily">
-            <span>미출동 / 출동</span>
-            <strong>${formatAsDailyNumber(s.noVisitDaily)} / ${formatAsDailyNumber(s.visitDaily)}</strong>
-          </button>
-          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button warning" data-as-daily-detail="cancelDaily">
-            <span>접수취소</span>
-            <strong>${formatAsDailyNumber(s.cancelDaily)}</strong>
-          </button>
-          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="waiting">
-            <span>접수대기</span>
-            <strong>${formatAsDailyNumber(s.waiting)}</strong>
-          </button>
-          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button warning" data-as-daily-detail="longIncomplete">
-            <span>30일 이상</span>
-            <strong>${formatAsDailyNumber(s.longIncomplete)}</strong>
-          </button>
-          <div class="as-daily-kpi-box">
-            <span>리드타임 평균</span>
-            <strong>${formatAsDailyLead(s.leadAverage)}</strong>
-          </div>
-          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="cancelMonthly">
-            <span>취소 누적</span>
-            <strong>${formatAsDailyNumber(s.cancelMonthly)}</strong>
-          </button>
-        </div>
+        ${renderAsDailySummaryKpiGrid(s, isHeavyRepair)}
       </div>`;
 
     bindAsDailyDetailButtons(summaryEl);
+  }
+
+  function renderAsDailyPrimaryKpis(summary, isHeavyRepair) {
+    return `
+      <div class="as-daily-primary-kpis ${isHeavyRepair ? 'as-daily-primary-kpis-heavy' : ''}">
+        <button type="button" class="as-daily-primary-kpi as-daily-primary-kpi-button" data-as-daily-detail="receiptDaily">
+          <span>접수</span>
+          <strong>${formatAsDailyNumber(summary.receiptDaily)}</strong>
+        </button>
+        <button type="button" class="as-daily-primary-kpi as-daily-primary-kpi-button" data-as-daily-detail="completeDaily">
+          <span>완료</span>
+          <strong>${formatAsDailyNumber(summary.completeDaily)}</strong>
+        </button>
+        <button type="button" class="as-daily-primary-kpi as-daily-primary-kpi-button" data-as-daily-detail="incomplete">
+          <span>미완료</span>
+          <strong>${formatAsDailyNumber(summary.incompleteTotal)}</strong>
+        </button>
+        ${isHeavyRepair ? `
+          <div class="as-daily-primary-kpi">
+            <span>LT</span>
+            <strong>${formatAsDailyLead(summary.leadAverage)}</strong>
+          </div>` : ''}
+      </div>`;
+  }
+
+  function renderAsDailySummaryKpiGrid(summary, isHeavyRepair) {
+    if (isHeavyRepair) {
+      return `
+        <div class="as-daily-kpi-grid as-daily-kpi-grid-heavy">
+          <div class="as-daily-kpi-box blue">
+            <span>접수 누적</span>
+            <strong>${formatAsDailyNumber(summary.receiptMonthly)}</strong>
+          </div>
+          <div class="as-daily-kpi-box blue">
+            <span>완료 누적</span>
+            <strong>${formatAsDailyNumber(summary.completeMonthly)}</strong>
+          </div>
+          <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button warning" data-as-daily-detail="longIncomplete">
+            <span>30일 이상</span>
+            <strong>${formatAsDailyNumber(summary.longIncomplete)}</strong>
+          </button>
+          <div class="as-daily-kpi-box blue">
+            <span>전월 이월</span>
+            <strong>${formatAsDailyCarryover(summary)}</strong>
+          </div>
+        </div>`;
+    }
+
+    return `
+      <div class="as-daily-kpi-grid">
+        <div class="as-daily-kpi-box blue">
+          <span>접수 누적</span>
+          <strong>${formatAsDailyNumber(summary.receiptMonthly)}</strong>
+        </div>
+        <div class="as-daily-kpi-box blue">
+          <span>완료 누적</span>
+          <strong>${formatAsDailyNumber(summary.completeMonthly)}</strong>
+        </div>
+        <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="visitDaily">
+          <span>미출동 / 출동</span>
+          <strong>${formatAsDailyNumber(summary.noVisitDaily)} / ${formatAsDailyNumber(summary.visitDaily)}</strong>
+        </button>
+        <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button warning" data-as-daily-detail="cancelDaily">
+          <span>접수취소</span>
+          <strong>${formatAsDailyNumber(summary.cancelDaily)}</strong>
+        </button>
+        <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="waiting">
+          <span>접수대기</span>
+          <strong>${formatAsDailyNumber(summary.waiting)}</strong>
+        </button>
+        <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button warning" data-as-daily-detail="longIncomplete">
+          <span>30일 이상</span>
+          <strong>${formatAsDailyNumber(summary.longIncomplete)}</strong>
+        </button>
+        <div class="as-daily-kpi-box">
+          <span>리드타임 평균</span>
+          <strong>${formatAsDailyLead(summary.leadAverage)}</strong>
+        </div>
+        <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="cancelMonthly">
+          <span>취소 누적</span>
+          <strong>${formatAsDailyNumber(summary.cancelMonthly)}</strong>
+        </button>
+      </div>`;
   }
 
   function bindAsDailyDetailButtons(rootEl) {
@@ -1492,11 +1602,18 @@
           <span>LT 평균</span>
           <strong>${formatAsDailyLead(row.leadAverage)}</strong>
         </div>
-        <div class="as-daily-cumulative-item warning">
-          <span>취소 누적</span>
-          <strong>${formatAsDailyNumber(row.cancelMonthly)}</strong>
+        <div class="as-daily-cumulative-item blue">
+          <span>전월 이월</span>
+          <strong>${formatAsDailyCarryover(row)}</strong>
         </div>
       </div>`;
+  }
+
+  function formatAsDailyCarryover(row) {
+    const receiptMonthly = Number((row && row.receiptMonthly) || 0);
+    const completeMonthly = Number((row && row.completeMonthly) || 0);
+    const carryover = completeMonthly - receiptMonthly;
+    return carryover > 0 ? formatAsDailyNumber(carryover) : '-';
   }
 
   function getAsDailyRowTypeLabel(rowType) {

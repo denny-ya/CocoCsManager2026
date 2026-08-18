@@ -136,6 +136,45 @@
     margin-bottom: 18px;
   }
 
+  .as-daily-download-area {
+    margin: -4px 0 18px;
+  }
+
+  .as-daily-download-btn {
+    width: 100%;
+    min-height: 46px;
+    border: 1px solid rgba(47, 90, 166, 0.26);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.94);
+    color: #2f5aa6;
+    font-size: 14px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 10px 24px rgba(31, 56, 88, 0.08);
+  }
+
+  .as-daily-download-btn .material-icons {
+    font-size: 20px;
+  }
+
+  .as-daily-download-btn:disabled {
+    cursor: wait;
+    opacity: 0.72;
+  }
+
+  .as-daily-download-note {
+    margin: 7px 4px 0;
+    color: #78889d;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
+  }
+
   .as-daily-summary-card {
     overflow: hidden;
   }
@@ -182,6 +221,10 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 8px;
     margin-top: 16px;
+  }
+
+  .as-daily-primary-kpis-heavy {
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .as-daily-primary-kpi {
@@ -240,6 +283,10 @@
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
     padding: 14px;
+  }
+
+  .as-daily-kpi-grid-heavy {
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .as-daily-kpi-box {
@@ -1029,6 +1076,10 @@
     .as-daily-kpi-grid {
       grid-template-columns: repeat(4, 1fr);
     }
+
+    .as-daily-kpi-grid-heavy {
+      grid-template-columns: repeat(4, 1fr);
+    }
   }
 
   @media (max-width: 480px) {
@@ -1062,6 +1113,10 @@
 
     .as-daily-primary-kpi strong {
       font-size: 19px;
+    }
+
+    .as-daily-primary-kpis-heavy .as-daily-primary-kpi strong {
+      font-size: 17px;
     }
 
     .as-daily-mini-item strong {

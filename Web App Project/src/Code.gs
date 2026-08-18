@@ -116,6 +116,8 @@ const AS_DAILY_RAW_SHEET_NAME = 'AS_RAW_UNIFIED';
 const AS_DAILY_SUMMARY_SHEET_NAME = 'AS_DAILY_SUMMARY';
 const AS_DAILY_WORK_SHEET_NAME = 'AS_DAILY_WORK';
 const AS_DAILY_DETAIL_MAX_ITEMS = 500;
+const APP_DRIVE_FOLDER_NAME = '[APP]CocoCsManager2026';
+const AS_DAILY_EXPORT_FOLDER_NAME = '다운로드';
 const BS_SERVICE_SHEETS = ['서비스1', '서비스2', '서비스3', '서비스4'];
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8시간
 const PASSWORD_HASH_PREFIX = 'sha256';
@@ -2027,6 +2029,20 @@ function decideWarrantyType_(usageDays, warrantyDays) {
 }
 
 /**
+ * 엑셀 다운로드 권한 승인용 함수
+ * Apps Script 편집기에서 이 함수를 1회 직접 실행해 권한 승인을 완료합니다.
+ */
+function authorizeAsDailyExcelExport() {
+  UrlFetchApp.fetch('https://www.google.com');
+  const exportFolder = getAsDailyExportFolder_();
+  const testBlob = Utilities.newBlob('AS daily excel export authorization test', 'text/plain', 'as_daily_export_auth_test.txt');
+  const testFile = exportFolder.createFile(testBlob);
+  testFile.setTrashed(true);
+  SpreadsheetApp.openById(AS_DAILY_STATS_SPREADSHEET_ID);
+  return 'AS 일일실적 엑셀 다운로드 권한 승인 확인 완료';
+}
+
+/**
  * AS 일일실적 조회
  * 데이터시트의 AS_DAILY_SUMMARY 결과값만 읽어 웹앱 화면에 전달합니다.
  */
@@ -2194,6 +2210,304 @@ function getAsDailyStatsDetail(sessionToken, targetDate, partFilter, repairTypeF
   } catch (e) {
     return { success: false, message: e.toString(), title: '', items: [] };
   }
+}
+
+/**
+ * AS 일일실적 엑셀 다운로드
+ * 현재 조회 조건의 AS_DAILY_SUMMARY 값을 기존 보고용 엑셀 양식에 맞춰 생성합니다.
+ */
+function exportAsDailyStatsExcel(sessionToken, targetDate, partFilter, repairTypeFilter) {
+  let tempSpreadsheetId = '';
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message };
+    if (!hasStatsPermission_(auth.session.permissions)) {
+      return { success: false, message: '실적 통계 다운로드 권한이 없습니다.' };
+    }
+
+    const ss = SpreadsheetApp.openById(AS_DAILY_STATS_SPREADSHEET_ID);
+    const summarySheet = ss.getSheetByName(AS_DAILY_SUMMARY_SHEET_NAME);
+    if (!summarySheet) return { success: false, message: 'AS_DAILY_SUMMARY 시트를 찾을 수 없습니다.' };
+
+    const selectedDate = normalizeAsDailyDateText_(targetDate) || inferLatestAsDailyReceiptDate_(ss);
+    if (!selectedDate) return { success: false, message: '다운로드할 기준일이 없습니다.' };
+
+    const selectedPart = String(partFilter || '전체').trim();
+    const selectedRepairType = selectedPart === '서비스팩토리'
+      ? '중수리'
+      : String(repairTypeFilter || '경수리').trim();
+
+    const lastCol = summarySheet.getLastColumn();
+    const headers = summarySheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+    const headerIndex = buildHeaderIndex_(headers);
+    const summaryValues = getAsDailySummaryRowsByDate_(summarySheet, headerIndex, selectedDate, lastCol);
+    const rows = summaryValues
+      .filter(function(row) {
+        if (!isAsDailyVisible_(getAsDailyCell_(row, headerIndex, '표시여부'))) return false;
+        const rowPartFilter = getAsDailyCell_(row, headerIndex, '파트필터');
+        const rowRepairType = getAsDailyCell_(row, headerIndex, '수리구분필터');
+        if (selectedPart === '전체') {
+          return rowPartFilter === '전체' && (rowRepairType === '경수리' || rowRepairType === '중수리');
+        }
+        return rowPartFilter === selectedPart && rowRepairType === selectedRepairType;
+      })
+      .map(function(row) { return mapAsDailySummaryRow_(row, headerIndex); })
+      .sort(function(a, b) { return a.displayOrder - b.displayOrder; });
+
+    if (rows.length === 0) {
+      return { success: false, message: '선택한 조건에 맞는 다운로드 데이터가 없습니다.' };
+    }
+
+    const reportTitle = 'AS일일실적_' + selectedDate + '_' + selectedPart + '_' + selectedRepairType + '.xlsx';
+    const temp = SpreadsheetApp.create('AS일일실적_다운로드_' + selectedDate + '_' + new Date().getTime());
+    tempSpreadsheetId = temp.getId();
+    const reportSheet = temp.getSheets()[0];
+    reportSheet.setName('AS일일실적');
+    buildAsDailyExcelSheet_(reportSheet, rows, selectedDate, selectedPart, selectedRepairType);
+    SpreadsheetApp.flush();
+
+    const url = 'https://docs.google.com/spreadsheets/d/' + tempSpreadsheetId + '/export?format=xlsx';
+    const response = UrlFetchApp.fetch(url, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      return { success: false, message: '엑셀 파일 변환에 실패했습니다. (' + response.getResponseCode() + ')' };
+    }
+
+    const blob = response.getBlob().setName(reportTitle);
+    const exportFolder = getAsDailyExportFolder_();
+    const exportFile = exportFolder.createFile(blob);
+    exportFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return {
+      success: true,
+      fileName: reportTitle,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      fileId: exportFile.getId(),
+      fileUrl: exportFile.getUrl(),
+      downloadUrl: 'https://drive.google.com/uc?export=download&id=' + exportFile.getId()
+    };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  } finally {
+    if (tempSpreadsheetId) {
+      try {
+        DriveApp.getFileById(tempSpreadsheetId).setTrashed(true);
+      } catch (ignore) {}
+    }
+  }
+}
+
+function buildAsDailyExcelSheet_(sheet, rows, selectedDate, selectedPart, selectedRepairType) {
+  const monthLabel = selectedDate.substring(5, 7).replace(/^0/, '') + '월';
+  const isFullDailyReport = selectedPart === '전체';
+  const lightRows = rows.filter(function(row) { return row.repairTypeFilter === '경수리'; });
+  const heavyRows = rows.filter(function(row) { return row.repairTypeFilter === '중수리'; });
+  const targetRows = isFullDailyReport ? rows : rows.filter(function(row) {
+    return row.repairTypeFilter === selectedRepairType;
+  });
+
+  sheet.clear();
+  sheet.setHiddenGridlines(true);
+  sheet.setFrozenRows(5);
+  sheet.setColumnWidths(1, 2, 92);
+  sheet.setColumnWidths(3, 6, 58);
+  sheet.setColumnWidths(9, 3, 66);
+  sheet.setColumnWidth(12, 88);
+  sheet.setColumnWidths(13, 3, 68);
+
+  sheet.getRange('A1:B1').merge();
+  sheet.getRange('A1').setValue('■ AS일일실적(' + monthLabel + ')');
+  sheet.getRange('O1').setValue(selectedDate);
+  sheet.getRange('A1:O1')
+    .setFontFamily('맑은 고딕')
+    .setFontSize(10)
+    .setFontWeight('bold')
+    .setVerticalAlignment('middle');
+  sheet.getRange('A1').setFontSize(13).setHorizontalAlignment('left');
+  sheet.getRange('O1').setHorizontalAlignment('right');
+
+  buildAsDailyExcelHeader_(sheet);
+
+  let rowNo = 6;
+  if (isFullDailyReport) {
+    rowNo = appendAsDailyLightExcelRows_(sheet, lightRows, rowNo);
+    rowNo = appendAsDailyHeavyExcelRows_(sheet, heavyRows, rowNo);
+  } else {
+    rowNo = appendAsDailyFilteredExcelRows_(sheet, targetRows, rowNo, selectedRepairType === '중수리');
+  }
+
+  if (rowNo <= 6) {
+    sheet.getRange(6, 1, 1, 15).setValues([['데이터 없음', '', '', '', '', '', '', '', '', '', '', '', '', '', '']]);
+    rowNo = 7;
+  }
+
+  sheet.getRange(1, 1, rowNo - 1, 15)
+    .setFontFamily('맑은 고딕')
+    .setFontSize(9)
+    .setVerticalAlignment('middle');
+  sheet.getRange(1, 1, rowNo - 1, 15).setWrap(true);
+  sheet.getRange(3, 1, rowNo - 3, 15)
+    .setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(3, 1, 3, 15).setHorizontalAlignment('center').setFontWeight('bold');
+  sheet.getRange(6, 1, Math.max(rowNo - 6, 1), 15).setHorizontalAlignment('center');
+  sheet.getRange(6, 3, Math.max(rowNo - 6, 1), 10).setNumberFormat('#,##0;-#,##0;-');
+  sheet.getRange(6, 13, Math.max(rowNo - 6, 1), 1).setNumberFormat('0.0;-0.0;-');
+  sheet.getRange(6, 14, Math.max(rowNo - 6, 1), 2).setNumberFormat('#,##0;-#,##0;-');
+
+  for (let r = 3; r < rowNo; r++) sheet.setRowHeight(r, 22);
+  sheet.setRowHeight(1, 24);
+}
+
+function getAsDailyExportFolder_() {
+  const appFolder = getOrCreateDriveFolderByName_(APP_DRIVE_FOLDER_NAME, DriveApp.getRootFolder());
+  return getOrCreateDriveFolderByName_(AS_DAILY_EXPORT_FOLDER_NAME, appFolder);
+}
+
+function getOrCreateDriveFolderByName_(folderName, parentFolder) {
+  const folders = parentFolder.getFoldersByName(folderName);
+  if (folders.hasNext()) return folders.next();
+  return parentFolder.createFolder(folderName);
+}
+
+function buildAsDailyExcelHeader_(sheet) {
+  const gray = '#d9d9d9';
+  const yellow = '#f1c232';
+  const merges = ['A3:B5', 'C3:D3', 'E3:H3', 'I3:L3', 'M3:M5', 'N3:O4', 'E4:F4', 'G4:H4', 'I4:I5', 'J4:J5', 'K4:K5', 'L4:L5'];
+  merges.forEach(function(a1) { sheet.getRange(a1).merge(); });
+
+  sheet.getRange('A3').setValue('구분');
+  sheet.getRange('C3').setValue('AS접수');
+  sheet.getRange('E3').setValue('AS완료');
+  sheet.getRange('I3').setValue('미완료');
+  sheet.getRange('M3').setValue('리드타임\n(누적평균)');
+  sheet.getRange('N3').setValue('접수취소');
+  sheet.getRange('E4').setValue('미출동');
+  sheet.getRange('G4').setValue('출동');
+  sheet.getRange('I4').setValue('계');
+  sheet.getRange('J4').setValue('접수대기');
+  sheet.getRange('K4').setValue('미완료');
+  sheet.getRange('L4').setValue('미완료\n(4일이상)');
+
+  const subHeaders = [['당일', '누적', '당일', '누적', '당일', '누적', '', '', '', '', '', '당일', '누적']];
+  sheet.getRange(5, 3, 1, 13).setValues(subHeaders);
+  sheet.getRange('A3:O5').setBackground(gray);
+  sheet.getRangeList(['E4:F4', 'G4:H4', 'L4:L5', 'N3:O4']).setBackground(yellow);
+}
+
+function appendAsDailyLightExcelRows_(sheet, lightRows, rowNo) {
+  const total = findAsDailyExcelRow_(lightRows, 'TOTAL');
+  if (total) rowNo = writeAsDailyExcelMetricRow_(sheet, rowNo, total.displayName, '', total, false, 'total', true);
+
+  const parts = lightRows.filter(function(row) { return row.rowType === 'PART'; });
+  parts.forEach(function(partRow) {
+    rowNo = writeAsDailyExcelMetricRow_(sheet, rowNo, partRow.displayName, '', partRow, false, 'part', true);
+    const centers = lightRows.filter(function(row) {
+      return row.rowType === 'CENTER' && row.part === partRow.part;
+    });
+
+    centers.forEach(function(centerRow) {
+      const masters = lightRows.filter(function(row) {
+        return row.rowType === 'MASTER' && row.part === centerRow.part && row.centerName === centerRow.centerName;
+      });
+
+      if (masters.length === 0) {
+        rowNo = writeAsDailyExcelMetricRow_(sheet, rowNo, centerRow.displayName, '', centerRow, false, '', true);
+        return;
+      }
+
+      const startRow = rowNo;
+      masters.forEach(function(masterRow) {
+        rowNo = writeAsDailyExcelMetricRow_(sheet, rowNo, '', masterRow.displayName, masterRow, false, '', false);
+      });
+      const endRow = rowNo - 1;
+      sheet.getRange(startRow, 1, endRow - startRow + 1, 1).merge();
+      sheet.getRange(startRow, 1)
+        .setValue(centerRow.centerName)
+        .setFontWeight('bold')
+        .setBackground('#ededed')
+        .setHorizontalAlignment('center')
+        .setVerticalAlignment('middle');
+    });
+  });
+
+  return rowNo;
+}
+
+function appendAsDailyHeavyExcelRows_(sheet, heavyRows, rowNo) {
+  const total = findAsDailyExcelRow_(heavyRows, 'TOTAL');
+  if (total) rowNo = writeAsDailyExcelMetricRow_(sheet, rowNo, total.displayName, '', total, true, 'total', true);
+
+  heavyRows
+    .filter(function(row) { return row.rowType === 'FACTORY' || row.rowType === 'CENTER'; })
+    .forEach(function(row) {
+      rowNo = writeAsDailyExcelMetricRow_(sheet, rowNo, row.displayName, '', row, true, 'part', true);
+    });
+
+  return rowNo;
+}
+
+function appendAsDailyFilteredExcelRows_(sheet, rows, rowNo, isHeavyRepair) {
+  rows.forEach(function(row) {
+    const style = row.rowType === 'TOTAL' ? 'total' : (row.rowType === 'PART' || row.rowType === 'CENTER' || row.rowType === 'FACTORY' ? 'part' : '');
+    const mergeLabel = row.rowType !== 'MASTER';
+    rowNo = writeAsDailyExcelMetricRow_(
+      sheet,
+      rowNo,
+      row.rowType === 'MASTER' ? row.centerName : row.displayName,
+      row.rowType === 'MASTER' ? row.displayName : '',
+      row,
+      isHeavyRepair,
+      style,
+      mergeLabel
+    );
+  });
+  return rowNo;
+}
+
+function writeAsDailyExcelMetricRow_(sheet, rowNo, labelA, labelB, row, isHeavyRepair, style, mergeLabel) {
+  const values = [['', '', row.receiptDaily, row.receiptMonthly]];
+  if (isHeavyRepair) {
+    values[0] = values[0].concat([0, 0, row.completeDaily, row.completeMonthly]);
+  } else {
+    values[0] = values[0].concat([row.noVisitDaily, row.noVisitMonthly, row.visitDaily, row.visitMonthly]);
+  }
+  values[0] = values[0].concat([
+    row.incompleteTotal,
+    row.waiting,
+    row.incomplete,
+    row.longIncomplete,
+    row.leadAverage === '' ? 0 : row.leadAverage,
+    row.cancelDaily,
+    row.cancelMonthly
+  ]);
+
+  sheet.getRange(rowNo, 1, 1, 15).setValues(values);
+  if (mergeLabel) {
+    sheet.getRange(rowNo, 1, 1, 2).merge();
+    sheet.getRange(rowNo, 1).setValue(labelA || '');
+  } else {
+    sheet.getRange(rowNo, 1).setValue(labelA || '');
+    sheet.getRange(rowNo, 2).setValue(labelB || '');
+  }
+
+  if (style === 'total') {
+    sheet.getRange(rowNo, 1, 1, 15).setFontWeight('bold');
+    sheet.getRange(rowNo, 1, 1, 15).setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+    sheet.getRange(rowNo, 1, 1, 15).setBorder(true, null, true, null, null, null, '#ff0000', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  } else if (style === 'part') {
+    sheet.getRange(rowNo, 1, 1, 15).setFontWeight('bold').setBackground('#ededed');
+  }
+
+  return rowNo + 1;
+}
+
+function findAsDailyExcelRow_(rows, rowType) {
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].rowType === rowType) return rows[i];
+  }
+  return null;
 }
 
 function buildHeaderIndex_(headers) {

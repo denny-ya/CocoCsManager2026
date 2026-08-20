@@ -2437,7 +2437,7 @@
   const deliveryPickupSelectedRows = {};
   let deliveryDriverSelectMode = false;
   const deliveryDriverSelectedRows = {};
-  const DELIVERY_CONTENTS_MAX_COUNT = 10;
+  const DELIVERY_CONTENTS_MAX_COUNT = 6;
 
   function isCurrentDeliveryRequester(item) {
     const requesterEmpId = String((item && item.requesterEmpId) || '').trim();
@@ -2524,6 +2524,8 @@
     if (pickupDateFrom) pickupDateFrom.value = '';
     const pickupDateTo = document.getElementById('deliveryPickupDateTo');
     if (pickupDateTo) pickupDateTo.value = '';
+    const pickupStatusFilter = document.getElementById('deliveryPickupStatusFilter');
+    if (pickupStatusFilter) pickupStatusFilter.value = 'ALL';
     const pickupResults = document.getElementById('deliveryPickupResults');
     if (pickupResults) {
       pickupResults.innerHTML = `
@@ -2702,7 +2704,7 @@
 
     const allInputs = document.querySelectorAll('#deliveryApplySection .' + config.inputClass);
     if (allInputs.length >= DELIVERY_CONTENTS_MAX_COUNT) {
-      alert('최대 10개까지 추가할 수 있습니다.');
+      alert('최대 6개까지 추가할 수 있습니다.');
       return;
     }
 
@@ -2878,11 +2880,11 @@
       return;
     }
     if (payload.contentsCart && payload.contentsCart.split(',').filter(function (x) { return String(x || '').trim(); }).length > DELIVERY_CONTENTS_MAX_COUNT) {
-      alert('카트는 최대 10개까지 입력 가능합니다.');
+      alert('카트는 최대 6개까지 입력 가능합니다.');
       return;
     }
     if (payload.contentsMaterial && payload.contentsMaterial.split(',').filter(function (x) { return String(x || '').trim(); }).length > DELIVERY_CONTENTS_MAX_COUNT) {
-      alert('자재는 최대 10개까지 입력 가능합니다.');
+      alert('자재는 최대 6개까지 입력 가능합니다.');
       return;
     }
 
@@ -3376,6 +3378,11 @@
     });
   }
 
+  function getDeliveryPickupStatusFilterValue() {
+    const statusEl = document.getElementById('deliveryPickupStatusFilter');
+    return statusEl ? String(statusEl.value || 'ALL').trim() : 'ALL';
+  }
+
   function getSelectedDeliveryPickupRowNos() {
     return Object.keys(deliveryPickupSelectedRows).filter(function(rowNo) {
       return !!deliveryPickupSelectedRows[rowNo];
@@ -3573,6 +3580,7 @@
     if (!ensureSessionToken()) return;
     const dateFrom = String(document.getElementById('deliveryPickupDateFrom').value || '').trim();
     const dateTo = String(document.getElementById('deliveryPickupDateTo').value || '').trim();
+    const pickupStatus = getDeliveryPickupStatusFilterValue();
     if (dateFrom && dateTo && dateFrom > dateTo) {
       alert('조회 시작일이 종료일보다 늦습니다. 날짜를 다시 확인해주세요.');
       return;
@@ -3610,7 +3618,8 @@
       })
       .getDriverPickupList(currentSessionToken, {
         dateFrom: dateFrom,
-        dateTo: dateTo
+        dateTo: dateTo,
+        pickupStatus: pickupStatus
       });
   }
 
@@ -3684,8 +3693,9 @@
     const clearFn = isPickupAction ? 'clearDeliveryPickupSelection' : 'clearDeliveryDriverSelection';
     const exitFn = isPickupAction ? 'exitDeliveryPickupSelectMode' : 'exitDeliveryDriverSelectMode';
     const enterFn = isPickupAction ? 'enterDeliveryPickupSelectMode' : 'enterDeliveryDriverSelectMode';
+    const showSelectToolbar = !isPickupAction || selectMode || selectableRows.length > 0;
 
-    let html = `
+    let html = showSelectToolbar ? `
       <div class="delivery-bulk-toolbar">
         ${selectMode ? `
           <div class="delivery-bulk-left">
@@ -3700,7 +3710,7 @@
           <button class="delivery-bulk-select-btn" ${selectButtonDisabled} onclick="${enterFn}()">선택</button>
         `}
       </div>
-    `;
+    ` : '';
 
     items.forEach(function (item) {
       const statusMeta = getDeliveryStatusMeta(item.status);

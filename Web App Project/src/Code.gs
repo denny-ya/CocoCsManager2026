@@ -13,8 +13,7 @@ function doGet() {
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
     .setTitle('hy MOBILITY - CS Manager')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 /**
@@ -118,6 +117,12 @@ const AS_DAILY_WORK_SHEET_NAME = 'AS_DAILY_WORK';
 const AS_DAILY_DETAIL_MAX_ITEMS = 500;
 const APP_DRIVE_FOLDER_NAME = '[APP]CocoCsManager2026';
 const AS_DAILY_EXPORT_FOLDER_NAME = '다운로드';
+const AS_DAILY_EXPORT_FOLDER_ID = '1UVt0Wjgak7lE2iRv2zcJbLEDfuIWap4j'; // 다운로드 폴더 ID를 입력하면 폴더명 중복 없이 고정 사용합니다.
+const AS_DAILY_EXPORT_RETENTION_DAYS = 7;
+const AS_DAILY_EXPORT_FILE_PREFIX = 'AS일일실적_';
+const AS_DAILY_STATS_CACHE_SECONDS = 60 * 5;
+const AS_DAILY_DETAIL_CACHE_SECONDS = 60 * 5;
+const AS_DAILY_CACHE_MAX_BYTES = 90 * 1024;
 const BS_SERVICE_SHEETS = ['서비스1', '서비스2', '서비스3', '서비스4'];
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8시간
 const PASSWORD_HASH_PREFIX = 'sha256';
@@ -1157,12 +1162,15 @@ function getDriverPickupList(sessionToken, filters) {
     const filter = filters || {};
     const dateFrom = String(filter.dateFrom || '').trim();
     const dateTo = String(filter.dateTo || '').trim();
+    const pickupStatusFilter = String(filter.pickupStatus || 'ALL').trim().toUpperCase();
     const allowedPickupViewStatuses = ['배차신청', '배차승인'];
     const res = getDeliveryList(sessionToken, { status: 'ALL' });
     if (!res || !res.success) return { success: false, message: '회수 목록 조회 실패', items: [] };
 
     const items = (res.items || []).filter(function (item) {
       if (allowedPickupViewStatuses.indexOf(item.status) === -1) return false;
+      if (pickupStatusFilter === 'APPLY' && item.status !== '배차신청') return false;
+      if (pickupStatusFilter === 'APPROVED' && item.status !== '배차승인') return false;
       if (item.status === '배차승인' && item.cancelRequested) return false;
       const targetDate = getDateOnly(item.searchDate);
       if (dateFrom && (!targetDate || targetDate < dateFrom)) return false;
@@ -1723,7 +1731,7 @@ function saveDeliveryApply(sessionToken, payload) {
     const destManual = String(payload.destManual || '').trim();
     const preferredDate = String(payload.preferredDate || '').trim();
     const note = String(payload.note || '').trim();
-    const maxContentsCount = 10;
+    const maxContentsCount = 6;
 
     const cartItems = contentsCart
       ? contentsCart.split(',').map(function(item) { return String(item || '').trim(); }).filter(function(item) { return item !== ''; })
@@ -1733,8 +1741,8 @@ function saveDeliveryApply(sessionToken, payload) {
       : [];
 
     if (!requesterName || !category || !preferredDate) return { success: false, message: '필수 항목이 누락되었습니다.' };
-    if (cartItems.length > maxContentsCount) return { success: false, message: '카트는 최대 10개까지 입력 가능합니다.' };
-    if (materialItems.length > maxContentsCount) return { success: false, message: '자재는 최대 10개까지 입력 가능합니다.' };
+    if (cartItems.length > maxContentsCount) return { success: false, message: '카트는 최대 6개까지 입력 가능합니다.' };
+    if (materialItems.length > maxContentsCount) return { success: false, message: '자재는 최대 6개까지 입력 가능합니다.' };
 
     const ss = SpreadsheetApp.openById(DELIVERY_SPREADSHEET_ID);
     const sheet = ss.getSheets()[0];
@@ -2029,20 +2037,6 @@ function decideWarrantyType_(usageDays, warrantyDays) {
 }
 
 /**
- * 엑셀 다운로드 권한 승인용 함수
- * Apps Script 편집기에서 이 함수를 1회 직접 실행해 권한 승인을 완료합니다.
- */
-function authorizeAsDailyExcelExport() {
-  UrlFetchApp.fetch('https://www.google.com');
-  const exportFolder = getAsDailyExportFolder_();
-  const testBlob = Utilities.newBlob('AS daily excel export authorization test', 'text/plain', 'as_daily_export_auth_test.txt');
-  const testFile = exportFolder.createFile(testBlob);
-  testFile.setTrashed(true);
-  SpreadsheetApp.openById(AS_DAILY_STATS_SPREADSHEET_ID);
-  return 'AS 일일실적 엑셀 다운로드 권한 승인 확인 완료';
-}
-
-/**
  * AS 일일실적 조회
  * 데이터시트의 AS_DAILY_SUMMARY 결과값만 읽어 웹앱 화면에 전달합니다.
  */
@@ -2078,6 +2072,10 @@ function getAsDailyStats(sessionToken, targetDate, partFilter, repairTypeFilter)
       return { success: false, message: '조회 가능한 기준일이 없습니다.', summary: null, rows: [] };
     }
 
+    const cacheKey = createAsDailyCacheKey_('stats', [selectedDate, selectedPart, selectedRepairType]);
+    const cachedResponse = getAsDailyCache_(cacheKey);
+    if (cachedResponse) return cachedResponse;
+
     const summaryValues = getAsDailySummaryRowsByDate_(sheet, headerIndex, selectedDate, lastCol);
     const rows = [];
     for (let i = 0; i < summaryValues.length; i++) {
@@ -2106,7 +2104,7 @@ function getAsDailyStats(sessionToken, targetDate, partFilter, repairTypeFilter)
       return row.rowType !== 'TOTAL';
     });
 
-    return {
+    const response = {
       success: true,
       targetDate: selectedDate,
       targetMonth: summary.targetMonth || '',
@@ -2115,6 +2113,8 @@ function getAsDailyStats(sessionToken, targetDate, partFilter, repairTypeFilter)
       summary: summary,
       rows: detailRows.length ? detailRows : rows
     };
+    putAsDailyCache_(cacheKey, response, AS_DAILY_STATS_CACHE_SECONDS);
+    return response;
   } catch (e) {
     return { success: false, message: e.toString(), summary: null, rows: [] };
   }
@@ -2165,6 +2165,10 @@ function getAsDailyStatsDetail(sessionToken, targetDate, partFilter, repairTypeF
     const selectedDetailType = String(detailType || '').trim();
     const monthStart = selectedDate.substring(0, 7) + '-01';
     const targetDateObj = parseAsDailyDateOnly_(selectedDate);
+    const scopeKey = scope ? JSON.stringify(scope) : '';
+    const cacheKey = createAsDailyCacheKey_('detail', [selectedDate, selectedPart, selectedRepairType, selectedDetailType, scopeKey]);
+    const cachedResponse = getAsDailyCache_(cacheKey);
+    if (cachedResponse) return cachedResponse;
 
     const ss = SpreadsheetApp.openById(AS_DAILY_STATS_SPREADSHEET_ID);
     const sheet = ss.getSheetByName(AS_DAILY_WORK_SHEET_NAME);
@@ -2196,7 +2200,7 @@ function getAsDailyStatsDetail(sessionToken, targetDate, partFilter, repairTypeF
     });
 
     const limitedItems = detailRows.slice(0, AS_DAILY_DETAIL_MAX_ITEMS);
-    return {
+    const response = {
       success: true,
       title: getAsDailyDetailTitle_(selectedDetailType),
       targetDate: selectedDate,
@@ -2207,6 +2211,8 @@ function getAsDailyStatsDetail(sessionToken, targetDate, partFilter, repairTypeF
       limited: detailRows.length > limitedItems.length,
       items: limitedItems
     };
+    putAsDailyCache_(cacheKey, response, AS_DAILY_DETAIL_CACHE_SECONDS);
+    return response;
   } catch (e) {
     return { success: false, message: e.toString(), title: '', items: [] };
   }
@@ -2276,8 +2282,9 @@ function exportAsDailyStatsExcel(sessionToken, targetDate, partFilter, repairTyp
       return { success: false, message: '엑셀 파일 변환에 실패했습니다. (' + response.getResponseCode() + ')' };
     }
 
-    const blob = response.getBlob().setName(reportTitle);
     const exportFolder = getAsDailyExportFolder_();
+    cleanupAsDailyExportFiles_(exportFolder);
+    const blob = response.getBlob().setName(reportTitle);
     const exportFile = exportFolder.createFile(blob);
     exportFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return {
@@ -2361,6 +2368,9 @@ function buildAsDailyExcelSheet_(sheet, rows, selectedDate, selectedPart, select
 }
 
 function getAsDailyExportFolder_() {
+  const folderId = String(AS_DAILY_EXPORT_FOLDER_ID || '').trim();
+  if (folderId) return DriveApp.getFolderById(folderId);
+
   const appFolder = getOrCreateDriveFolderByName_(APP_DRIVE_FOLDER_NAME, DriveApp.getRootFolder());
   return getOrCreateDriveFolderByName_(AS_DAILY_EXPORT_FOLDER_NAME, appFolder);
 }
@@ -2369,6 +2379,20 @@ function getOrCreateDriveFolderByName_(folderName, parentFolder) {
   const folders = parentFolder.getFoldersByName(folderName);
   if (folders.hasNext()) return folders.next();
   return parentFolder.createFolder(folderName);
+}
+
+function cleanupAsDailyExportFiles_(folder) {
+  const cutoffTime = new Date().getTime() - (AS_DAILY_EXPORT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const files = folder.getFiles();
+
+  while (files.hasNext()) {
+    const file = files.next();
+    const fileName = String(file.getName() || '');
+    if (fileName.indexOf(AS_DAILY_EXPORT_FILE_PREFIX) !== 0) continue;
+    if (file.getDateCreated().getTime() < cutoffTime) {
+      file.setTrashed(true);
+    }
+  }
 }
 
 function buildAsDailyExcelHeader_(sheet) {
@@ -2523,6 +2547,46 @@ function getAsDailyCell_(row, headerIndex, headerName) {
   const col = headerIndex[headerName];
   if (col === undefined || col < 0) return '';
   return String(row[col] || '').trim();
+}
+
+function createAsDailyCacheKey_(namespace, parts) {
+  const seed = [namespace].concat(parts || []).map(function(part) {
+    return String(part || '').trim();
+  }).join('|');
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    seed,
+    Utilities.Charset.UTF_8
+  );
+  return 'asDaily:' + namespace + ':' + toHex_(digest).substring(0, 40);
+}
+
+function getAsDailyCache_(cacheKey) {
+  const key = String(cacheKey || '').trim();
+  if (!key) return null;
+
+  const raw = CacheService.getScriptCache().get(key);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function putAsDailyCache_(cacheKey, value, ttlSeconds) {
+  const key = String(cacheKey || '').trim();
+  if (!key || !value) return false;
+
+  try {
+    const raw = JSON.stringify(value);
+    if (Utilities.newBlob(raw).getBytes().length > AS_DAILY_CACHE_MAX_BYTES) return false;
+    CacheService.getScriptCache().put(key, raw, ttlSeconds || AS_DAILY_STATS_CACHE_SECONDS);
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function inferLatestAsDailyReceiptDate_(ss) {

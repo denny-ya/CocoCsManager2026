@@ -125,6 +125,7 @@ const AS_DAILY_DETAIL_CACHE_SECONDS = 60 * 5;
 const AS_DAILY_CACHE_MAX_BYTES = 90 * 1024;
 const BS_SERVICE_SHEETS = ['서비스1', '서비스2', '서비스3', '서비스4'];
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8시간
+const SESSION_STORE_PREFIX = 'session:';
 const PASSWORD_HASH_PREFIX = 'sha256';
 const DELIVERY_CANCEL_HEADERS = [
   '신청자사번',
@@ -186,16 +187,68 @@ function createSessionToken_(employeeId, userName, userPhone, permissions) {
     userName: String(userName || '').trim(),
     userPhone: String(userPhone || '').trim(),
     permissions: permissions || {},
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    expiresAt: createSessionExpiresAt_()
   };
-  CacheService.getScriptCache().put('session:' + token, JSON.stringify(payload), SESSION_TTL_SECONDS);
+  cleanupExpiredSessions_();
+  saveSessionData_(token, payload);
   return token;
 }
 
 function clearSessionToken_(sessionToken) {
   const token = String(sessionToken || '').trim();
   if (!token) return;
-  CacheService.getScriptCache().remove('session:' + token);
+  const key = getSessionStorageKey_(token);
+  CacheService.getScriptCache().remove(key);
+  PropertiesService.getScriptProperties().deleteProperty(key);
+}
+
+function getSessionStorageKey_(sessionToken) {
+  return SESSION_STORE_PREFIX + String(sessionToken || '').trim();
+}
+
+function createSessionExpiresAt_() {
+  return new Date(new Date().getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
+}
+
+function saveSessionData_(sessionToken, session) {
+  const token = String(sessionToken || '').trim();
+  if (!token || !session) return;
+
+  const key = getSessionStorageKey_(token);
+  const raw = JSON.stringify(session);
+  CacheService.getScriptCache().put(key, raw, SESSION_TTL_SECONDS);
+  PropertiesService.getScriptProperties().setProperty(key, raw);
+}
+
+function parseSessionData_(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function isSessionExpired_(session) {
+  if (!session || !session.expiresAt) return false;
+  const expiresAt = new Date(session.expiresAt).getTime();
+  return isNaN(expiresAt) || expiresAt <= new Date().getTime();
+}
+
+function cleanupExpiredSessions_() {
+  const props = PropertiesService.getScriptProperties();
+  const allProps = props.getProperties();
+  const cache = CacheService.getScriptCache();
+
+  Object.keys(allProps).forEach(function(key) {
+    if (key.indexOf(SESSION_STORE_PREFIX) !== 0) return;
+    const session = parseSessionData_(allProps[key]);
+    if (!session || isSessionExpired_(session)) {
+      props.deleteProperty(key);
+      cache.remove(key);
+    }
+  });
 }
 
 function toHex_(bytes) {
@@ -259,13 +312,32 @@ function validatePasswordPolicy_(password) {
 function getSessionData_(sessionToken) {
   const token = String(sessionToken || '').trim();
   if (!token) return null;
-  const raw = CacheService.getScriptCache().get('session:' + token);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
+
+  const key = getSessionStorageKey_(token);
+  const cache = CacheService.getScriptCache();
+  let raw = cache.get(key);
+  let session = parseSessionData_(raw);
+
+  if (!session) {
+    raw = PropertiesService.getScriptProperties().getProperty(key);
+    session = parseSessionData_(raw);
+  }
+
+  if (!session) return null;
+
+  if (isSessionExpired_(session)) {
+    clearSessionToken_(token);
     return null;
   }
+
+  if (!session.expiresAt) {
+    session.expiresAt = createSessionExpiresAt_();
+    saveSessionData_(token, session);
+  } else if (!cache.get(key)) {
+    cache.put(key, JSON.stringify(session), SESSION_TTL_SECONDS);
+  }
+
+  return session;
 }
 
 function requireSession_(sessionToken) {
@@ -273,7 +345,8 @@ function requireSession_(sessionToken) {
   const session = getSessionData_(sessionToken);
   if (!session) return { success: false, message: '로그인 세션이 만료되었습니다. 다시 로그인해주세요.' };
   // 호출 시점마다 TTL을 연장해 사용 중 세션 만료로 인한 오동작을 줄입니다.
-  CacheService.getScriptCache().put('session:' + token, JSON.stringify(session), SESSION_TTL_SECONDS);
+  session.expiresAt = createSessionExpiresAt_();
+  saveSessionData_(token, session);
   return { success: true, session: session };
 }
 

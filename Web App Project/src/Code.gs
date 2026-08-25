@@ -124,6 +124,9 @@ const AS_DAILY_STATS_CACHE_SECONDS = 60 * 5;
 const AS_DAILY_DETAIL_CACHE_SECONDS = 60 * 5;
 const AS_DAILY_CACHE_MAX_BYTES = 90 * 1024;
 const BS_SERVICE_SHEETS = ['서비스1', '서비스2', '서비스3', '서비스4'];
+const BS_STATS_CACHE_SECONDS = 60 * 3;
+const BS_STATS_CACHE_PREFIX = 'bsStats:part:v1:';
+const BS_STATS_DATA_START_ROW = 5;
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8시간
 const SESSION_STORE_PREFIX = 'session:';
 const PASSWORD_HASH_PREFIX = 'sha256';
@@ -776,6 +779,203 @@ function getMasterStats(sessionToken, masterName, part) {
 }
 
 /**
+ * BS 및 리워크 실적 조회
+ * 권한이 허용된 서비스 시트의 현재 누적 진행 현황을 파트/마스터 단위로 집계합니다.
+ */
+function getBsPerformanceStats(sessionToken, partFilter, typeFilter) {
+  try {
+    const auth = requireSession_(sessionToken);
+    if (!auth.success) return { success: false, message: auth.message, parts: [] };
+    if (!hasStatsPermission_(auth.session.permissions)) {
+      return { success: false, message: '실적 통계 조회 권한이 없습니다.', parts: [] };
+    }
+    if (!hasBsPermission_(auth.session.permissions)) {
+      return { success: false, message: 'BS 조회 권한이 없습니다.', parts: [] };
+    }
+
+    const requestedPartText = String(partFilter || '').trim();
+    const requestedPart = !requestedPartText || requestedPartText === '전체' ? '' : requestedPartText;
+    if (requestedPart && !isAuthorizedBsPartRequest_(auth.session.permissions, requestedPart)) {
+      return { success: false, message: '해당 서비스 조회 권한이 없습니다.', parts: [] };
+    }
+
+    const requestedType = String(typeFilter || 'ALL').trim().toUpperCase();
+    const selectedType = ['ALL', 'BS', 'REWORK'].indexOf(requestedType) !== -1 ? requestedType : 'ALL';
+    const allowedParts = getAllowedBsServiceSheets_(auth.session.permissions);
+    const targetParts = requestedPart ? [requestedPart] : allowedParts;
+    const partStats = [];
+    let ss = null;
+
+    targetParts.forEach(function(sheetName) {
+      let stats = getCachedBsPerformancePart_(sheetName);
+      if (!stats) {
+        if (!ss) ss = SpreadsheetApp.openById(BS_SPREADSHEET_ID);
+        stats = buildBsPerformancePartFromSheet_(ss.getSheetByName(sheetName), sheetName);
+        putCachedBsPerformancePart_(sheetName, stats);
+      }
+      partStats.push(stats);
+    });
+
+    const overall = createBsPerformanceMetricSet_();
+    partStats.forEach(function(part) {
+      mergeBsPerformanceMetricSet_(overall, part);
+    });
+    finalizeBsPerformanceMetricSet_(overall);
+
+    return {
+      success: true,
+      asOfDate: Utilities.formatDate(new Date(), 'GMT+9', 'yyyy-MM-dd'),
+      campaignYear: Utilities.formatDate(new Date(), 'GMT+9', 'yyyy'),
+      partFilter: requestedPart || '전체',
+      typeFilter: selectedType,
+      allowedParts: allowedParts,
+      overall: overall,
+      parts: partStats
+    };
+  } catch (e) {
+    return { success: false, message: e.toString(), parts: [] };
+  }
+}
+
+function buildBsPerformancePartFromSheet_(sheet, sheetName) {
+  const result = createBsPerformanceMetricSet_();
+  result.part = String(sheetName || '').trim();
+  result.masters = [];
+
+  if (!sheet) {
+    finalizeBsPerformanceMetricSet_(result);
+    return result;
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < BS_STATS_DATA_START_ROW) {
+    finalizeBsPerformanceMetricSet_(result);
+    return result;
+  }
+
+  // J~U: 대상구분, 파트, 마스터, 완료상태/일자, 메모/제외/폐기, 점검결과 4종
+  const rows = sheet.getRange(BS_STATS_DATA_START_ROW, 10, lastRow - BS_STATS_DATA_START_ROW + 1, 12).getDisplayValues();
+  const masters = {};
+
+  rows.forEach(function(row) {
+    const targetText = String(row[0] || '').trim(); // J
+    const isRework = targetText.indexOf('리워크') !== -1;
+    const isBs = targetText.toUpperCase() === 'O';
+    if (!isBs && !isRework) return;
+
+    const masterName = String(row[2] || '').trim() || '미지정'; // L
+    const masterKey = 'master:' + normalizeLooseText_(masterName);
+    if (!masters[masterKey]) {
+      masters[masterKey] = createBsPerformanceMetricSet_();
+      masters[masterKey].name = masterName;
+    }
+
+    const isCompleted = String(row[3] || '').trim() !== ''; // M
+    const metricName = isRework ? 'rework' : 'bs';
+    addBsPerformanceTarget_(result[metricName], isCompleted);
+    addBsPerformanceTarget_(masters[masterKey][metricName], isCompleted);
+
+    if (isBs && isCompleted) {
+      addBsPerformanceGrades_(result.grades, row);
+      addBsPerformanceGrades_(masters[masterKey].grades, row);
+    }
+  });
+
+  result.masters = Object.keys(masters).map(function(key) {
+    const master = masters[key];
+    finalizeBsPerformanceMetricSet_(master);
+    return master;
+  }).sort(function(a, b) {
+    if (a.name === '미지정') return 1;
+    if (b.name === '미지정') return -1;
+    return a.name.localeCompare(b.name, 'ko');
+  });
+  result.masterCount = result.masters.length;
+  finalizeBsPerformanceMetricSet_(result);
+  return result;
+}
+
+function createBsPerformanceMetricSet_() {
+  return {
+    bs: createBsPerformanceMetric_(),
+    rework: createBsPerformanceMetric_(),
+    grades: { s: 0, a: 0, b: 0, c: 0, total: 0, difference: 0 },
+    masterCount: 0
+  };
+}
+
+function createBsPerformanceMetric_() {
+  return { target: 0, completed: 0, incomplete: 0, rate: null };
+}
+
+function addBsPerformanceTarget_(metric, isCompleted) {
+  metric.target++;
+  if (isCompleted) metric.completed++;
+}
+
+function addBsPerformanceGrades_(grades, row) {
+  if (isAllowedFlag_(row[8])) grades.s++;  // R: 점검 -> S
+  if (isAllowedFlag_(row[9])) grades.a++;  // S: 교체 -> A
+  if (isAllowedFlag_(row[10])) grades.b++; // T: 이관 -> B
+  if (isAllowedFlag_(row[11])) grades.c++; // U: 폐기 -> C
+}
+
+function finalizeBsPerformanceMetricSet_(metricSet) {
+  finalizeBsPerformanceMetric_(metricSet.bs);
+  finalizeBsPerformanceMetric_(metricSet.rework);
+  const grades = metricSet.grades;
+  grades.total = grades.s + grades.a + grades.b + grades.c;
+  grades.difference = metricSet.bs.completed - grades.total;
+  return metricSet;
+}
+
+function finalizeBsPerformanceMetric_(metric) {
+  metric.incomplete = Math.max(metric.target - metric.completed, 0);
+  metric.rate = metric.target > 0 ? Math.round((metric.completed / metric.target) * 1000) / 10 : null;
+}
+
+function mergeBsPerformanceMetricSet_(target, source) {
+  ['bs', 'rework'].forEach(function(key) {
+    target[key].target += Number(source[key].target || 0);
+    target[key].completed += Number(source[key].completed || 0);
+  });
+  ['s', 'a', 'b', 'c'].forEach(function(key) {
+    target.grades[key] += Number(source.grades[key] || 0);
+  });
+  target.masterCount += Number(source.masterCount || 0);
+}
+
+function getBsPerformancePartCacheKey_(sheetName) {
+  return BS_STATS_CACHE_PREFIX + String(sheetName || '').trim();
+}
+
+function getCachedBsPerformancePart_(sheetName) {
+  const raw = CacheService.getScriptCache().get(getBsPerformancePartCacheKey_(sheetName));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function putCachedBsPerformancePart_(sheetName, value) {
+  try {
+    CacheService.getScriptCache().put(
+      getBsPerformancePartCacheKey_(sheetName),
+      JSON.stringify(value),
+      BS_STATS_CACHE_SECONDS
+    );
+  } catch (e) {
+    console.warn('BS 실적 캐시 저장 실패: ' + e.toString());
+  }
+}
+
+function clearBsPerformancePartCache_(sheetName) {
+  CacheService.getScriptCache().remove(getBsPerformancePartCacheKey_(sheetName));
+}
+
+/**
  * 메모 저장 (시트명 기반 - 전체 시트 검색)
  */
 function saveMemo(sessionToken, vin, memo) {
@@ -836,6 +1036,8 @@ function markAsComplete(sessionToken, vin, memo, processTypes) {
             sheet.getRange(rowIdx, 20).setValue(processTypes.transfer ? 'O' : '');   // T
             sheet.getRange(rowIdx, 21).setValue(processTypes.disposal ? 'O' : '');   // U
           }
+
+          clearBsPerformancePartCache_(allowedSheets[s]);
           
           return { success: true, message: '점검 완료 처리되었습니다.' };
         }

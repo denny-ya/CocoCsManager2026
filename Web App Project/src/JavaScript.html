@@ -118,9 +118,15 @@
     if (view) view.style.display = 'none';
   }
 
+  function hideBsStatsView() {
+    const view = document.getElementById('bsStatsView');
+    if (view) view.style.display = 'none';
+  }
+
   function hideStatsViews() {
     hideStatsMenuView();
     hideAsDailyStatsView();
+    hideBsStatsView();
   }
 
   const GUIDE_EMBED_URL = 'https://docs.google.com/presentation/d/1gbsH7E3HobsTIs3K8xRW1g-Oz6GI05005VeyNhshSAI/embed?start=false&loop=false&delayms=0';
@@ -247,6 +253,7 @@
   let currentAddressPart = ''; // 영업점 주소록용 파트 보관
   let currentAsDailyStatsState = null;
   let currentAsDailyDetailGroupItems = {};
+  let currentBsPerformanceStatsState = null;
   const LOGIN_STORAGE_EMP_ID_KEY = 'coco_login_emp_id';
   const LOGIN_STORAGE_PASSWORD_KEY = 'coco_login_password';
 
@@ -256,6 +263,7 @@
     currentUserEmpId = '';
     currentUserName = '';
     currentUserPhone = '';
+    currentBsPerformanceStatsState = null;
   }
 
   function showInstallInfoView() {
@@ -744,6 +752,8 @@
     const gv = document.getElementById('guideView');
     if (gv) gv.style.display = 'none';
     hideAsDailyStatsView();
+    hideBsStatsView();
+    updateStatsMenuAccess();
 
     view.style.display = 'block';
 
@@ -764,6 +774,7 @@
     const gv = document.getElementById('guideView');
     if (gv) gv.style.display = 'none';
     hideStatsMenuView();
+    hideBsStatsView();
     const view = document.getElementById('asDailyStatsView');
     if (view) view.style.display = 'block';
 
@@ -775,6 +786,322 @@
 
     resetAsDailyStatsResults();
     loadAsDailyDefaultDate();
+  }
+
+  function hasBsStatsAccess() {
+    const statsAllowed = userPermissions && (userPermissions.stats === 'O' || userPermissions.stats === 'o');
+    const bsAllowed = userPermissions && Array.isArray(userPermissions.bs) &&
+      userPermissions.bs.some(function(flag) { return flag === 'O' || flag === 'o'; });
+    return !!(statsAllowed && bsAllowed);
+  }
+
+  function updateStatsMenuAccess() {
+    const card = document.getElementById('statsMenuBsCard');
+    const status = document.getElementById('statsMenuBsStatus');
+    const icon = document.getElementById('statsMenuBsIcon');
+    if (!card) return;
+
+    const hasAccess = hasBsStatsAccess();
+    card.disabled = !hasAccess;
+    card.setAttribute('aria-disabled', hasAccess ? 'false' : 'true');
+    card.classList.toggle('is-active', hasAccess);
+    card.classList.toggle('is-upcoming', !hasAccess);
+    if (status) status.style.display = hasAccess ? 'none' : 'inline-flex';
+    if (icon) {
+      icon.innerText = hasAccess ? 'arrow_forward' : 'lock';
+      icon.className = hasAccess ? 'stats-menu-card-arrow material-icons' : 'stats-menu-card-lock material-icons';
+    }
+  }
+
+  function showBsStatsView() {
+    if (!ensureSessionToken()) return;
+    if (!hasBsStatsAccess()) {
+      alert('BS 실적 조회 권한이 없습니다.');
+      return;
+    }
+
+    document.getElementById('mainView').style.display = 'none';
+    document.getElementById('bsSearchView').style.display = 'none';
+    document.getElementById('branchAddressView').style.display = 'none';
+    document.getElementById('deliveryView').style.display = 'none';
+    const iv = document.getElementById('installInfoView');
+    if (iv) iv.style.display = 'none';
+    const gv = document.getElementById('guideView');
+    if (gv) gv.style.display = 'none';
+    hideStatsMenuView();
+    hideAsDailyStatsView();
+    populateBsStatsPartOptions();
+    resetBsPerformanceStatsResults();
+
+    const view = document.getElementById('bsStatsView');
+    if (view) view.style.display = 'block';
+
+    if (history.state?.view !== 'bsStats') {
+      history.pushState({ view: 'bsStats' }, 'BS Stats');
+    }
+  }
+
+  function populateBsStatsPartOptions() {
+    const select = document.getElementById('bsStatsPart');
+    if (!select) return;
+
+    const previousValue = select.value || '전체';
+    const parts = [];
+    const permissions = (userPermissions && Array.isArray(userPermissions.bs)) ? userPermissions.bs : [];
+    permissions.forEach(function(flag, index) {
+      if (flag === 'O' || flag === 'o') parts.push('서비스' + (index + 1));
+    });
+
+    select.innerHTML = '<option value="전체">전체</option>' + parts.map(function(part) {
+      return '<option value="' + part + '">' + part + '</option>';
+    }).join('');
+    select.value = parts.indexOf(previousValue) !== -1 || previousValue === '전체' ? previousValue : '전체';
+  }
+
+  function resetBsPerformanceStatsResults() {
+    currentBsPerformanceStatsState = null;
+    const summaryEl = document.getElementById('bsStatsSummary');
+    const rowsEl = document.getElementById('bsStatsPartRows');
+    const countEl = document.getElementById('bsStatsPartCount');
+    if (summaryEl) {
+      summaryEl.innerHTML = '<div class="bs-stats-empty"><span class="material-icons">query_stats</span><p>파트와 구분을 선택한 뒤 실적을 조회해주세요</p></div>';
+    }
+    if (rowsEl) {
+      rowsEl.innerHTML = '<div class="bs-stats-empty compact"><span class="material-icons">bar_chart</span><p>조회된 파트 실적이 없습니다</p></div>';
+    }
+    if (countEl) countEl.innerText = '0개 파트';
+  }
+
+  function loadBsPerformanceStats() {
+    if (!ensureSessionToken()) return;
+
+    const partEl = document.getElementById('bsStatsPart');
+    const typeEl = document.getElementById('bsStatsType');
+    const part = partEl ? partEl.value : '전체';
+    const type = typeEl ? typeEl.value : 'ALL';
+    showLoading();
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        hideLoading();
+        if (!res || !res.success) {
+          renderBsPerformanceStatsError((res && res.message) ? res.message : 'BS 실적 조회에 실패했습니다.');
+          return;
+        }
+        currentBsPerformanceStatsState = res;
+        renderBsPerformanceStats(res);
+      })
+      .withFailureHandler(function(err) {
+        hideLoading();
+        renderBsPerformanceStatsError('BS 실적 조회 실패: ' + err);
+      })
+      .getBsPerformanceStats(currentSessionToken, part, type);
+  }
+
+  function renderBsPerformanceStatsError(message) {
+    currentBsPerformanceStatsState = null;
+    const summaryEl = document.getElementById('bsStatsSummary');
+    const rowsEl = document.getElementById('bsStatsPartRows');
+    const countEl = document.getElementById('bsStatsPartCount');
+    const safeMessage = escapeHtml(message || 'BS 실적 조회에 실패했습니다.');
+    if (summaryEl) {
+      summaryEl.innerHTML = '<div class="bs-stats-empty is-error"><span class="material-icons">error_outline</span><p>' + safeMessage + '</p></div>';
+    }
+    if (rowsEl) rowsEl.innerHTML = '';
+    if (countEl) countEl.innerText = '0개 파트';
+  }
+
+  function renderBsPerformanceStats(res) {
+    const summaryEl = document.getElementById('bsStatsSummary');
+    const rowsEl = document.getElementById('bsStatsPartRows');
+    const countEl = document.getElementById('bsStatsPartCount');
+    if (!summaryEl || !rowsEl) return;
+
+    const selectedType = String(res.typeFilter || 'ALL').toUpperCase();
+    const showBs = selectedType !== 'REWORK';
+    const showRework = selectedType !== 'BS';
+    const overall = res.overall || {};
+    const parts = Array.isArray(res.parts) ? res.parts : [];
+    const filterLabel = res.partFilter === '전체' ? '전체 진행 현황' : res.partFilter + ' 진행 현황';
+    const overviewCards = [];
+
+    if (showBs) overviewCards.push(renderBsStatsOverviewCard('정기점검 BS', overall.bs || {}));
+    if (showRework) overviewCards.push(renderBsStatsOverviewCard('HY카트 리워크', overall.rework || {}));
+
+    const gradeHtml = showBs ? renderBsStatsGradeSummary(overall.grades || {}) : '';
+    summaryEl.innerHTML = `
+      <div class="bs-stats-summary-card">
+        <div class="bs-stats-summary-head">
+          <div>
+            <span>${escapeHtml(String(res.campaignYear || '-'))}년 정기 안전 품질 점검 및 리워크</span>
+            <h3>${escapeHtml(filterLabel)}</h3>
+          </div>
+          <time>${escapeHtml(res.asOfDate || '-')}</time>
+        </div>
+        <div class="bs-stats-overview-grid${overviewCards.length === 1 ? ' is-single' : ''}">${overviewCards.join('')}</div>
+        ${gradeHtml}
+      </div>`;
+
+    if (parts.length === 0) {
+      rowsEl.innerHTML = '<div class="bs-stats-empty compact"><span class="material-icons">bar_chart</span><p>조회된 파트 실적이 없습니다</p></div>';
+      if (countEl) countEl.innerText = '0개 파트';
+      return;
+    }
+
+    const totalMasters = parts.reduce(function(sum, part) { return sum + Number(part.masterCount || 0); }, 0);
+    if (countEl) countEl.innerText = parts.length + '개 파트 / ' + totalMasters + '명';
+    rowsEl.innerHTML = parts.map(function(part) {
+      return renderBsStatsPartCard(part, selectedType);
+    }).join('');
+
+    rowsEl.querySelectorAll('.bs-stats-part-toggle').forEach(function(button) {
+      button.addEventListener('click', function() { toggleBsStatsPart(button); });
+    });
+  }
+
+  function renderBsStatsOverviewCard(label, metric) {
+    return `
+      <article class="bs-stats-overview-card">
+        <div class="bs-stats-overview-label"><span>${escapeHtml(label)}</span><b>${formatBsStatsRate(metric.rate)}</b></div>
+        <div class="bs-stats-progress"><i style="width:${getBsStatsProgressWidth(metric.rate)}%"></i></div>
+        <div class="bs-stats-overview-values">
+          <span><small>대상</small><strong>${formatBsStatsNumber(metric.target)}</strong></span>
+          <span><small>완료</small><strong>${formatBsStatsNumber(metric.completed)}</strong></span>
+          <span><small>미완료</small><strong>${formatBsStatsNumber(metric.incomplete)}</strong></span>
+        </div>
+      </article>`;
+  }
+
+  function renderBsStatsGradeSummary(grades) {
+    return `
+      <div class="bs-stats-grade-summary">
+        <span class="bs-stats-grade-title">BS 점검 결과</span>
+        <span><small>S</small><strong>${formatBsStatsNumber(grades.s)}</strong></span>
+        <span><small>A</small><strong>${formatBsStatsNumber(grades.a)}</strong></span>
+        <span><small>B</small><strong>${formatBsStatsNumber(grades.b)}</strong></span>
+        <span><small>C</small><strong>${formatBsStatsNumber(grades.c)}</strong></span>
+      </div>`;
+  }
+
+  function renderBsStatsPartCard(part, selectedType) {
+    const showBs = selectedType !== 'REWORK';
+    const showRework = selectedType !== 'BS';
+    const masters = Array.isArray(part.masters) ? part.masters : [];
+    const summaryRows = [];
+    if (showBs) summaryRows.push(renderBsStatsMetricRow('BS', part.bs || {}));
+    if (showRework) summaryRows.push(renderBsStatsMetricRow('리워크', part.rework || {}));
+    const toneClass = getBsStatsPartTone(part.part);
+
+    return `
+      <article class="bs-stats-part-card ${toneClass}">
+        <button type="button" class="bs-stats-part-toggle" aria-expanded="false">
+          <span>
+            <strong>${escapeHtml(part.part || '-')}</strong>
+            <small>마스터 ${formatBsStatsNumber(part.masterCount)}명</small>
+          </span>
+          <span class="bs-stats-part-rate">${formatBsStatsRate(getBsStatsPrimaryRate(part, selectedType))}</span>
+          <span class="bs-stats-part-arrow material-icons">expand_more</span>
+        </button>
+        <div class="bs-stats-part-summary">${summaryRows.join('')}</div>
+        <div class="bs-stats-master-panel">
+          <div class="bs-stats-master-label">마스터별 실적</div>
+          ${masters.length ? masters.map(function(master) {
+            return renderBsStatsMasterCard(master, selectedType);
+          }).join('') : '<div class="bs-stats-master-empty">표시할 마스터 실적이 없습니다.</div>'}
+        </div>
+      </article>`;
+  }
+
+  function renderBsStatsMetricRow(label, metric) {
+    return `
+      <div class="bs-stats-metric-row">
+        <b>${escapeHtml(label)}</b>
+        <div class="bs-stats-metric-values">
+          <span><small>대상</small><strong>${formatBsStatsNumber(metric.target)}</strong></span>
+          <span><small>완료</small><strong>${formatBsStatsNumber(metric.completed)}</strong></span>
+          <span><small>미완료</small><strong>${formatBsStatsNumber(metric.incomplete)}</strong></span>
+        </div>
+        <div class="bs-stats-metric-rate">
+          <strong>${formatBsStatsRate(metric.rate)}</strong>
+          <i><em style="width:${getBsStatsProgressWidth(metric.rate)}%"></em></i>
+        </div>
+      </div>`;
+  }
+
+  function renderBsStatsMasterCard(master, selectedType) {
+    const showBs = selectedType !== 'REWORK';
+    const showRework = selectedType !== 'BS';
+    const rows = [];
+    if (showBs) rows.push(renderBsStatsMasterMetric('BS', master.bs || {}));
+    if (showRework) rows.push(renderBsStatsMasterMetric('리워크', master.rework || {}));
+    return `
+      <article class="bs-stats-master-card">
+        <div class="bs-stats-master-head">
+          <strong>${escapeHtml(master.name || '미지정')}</strong>
+          <span>마스터</span>
+        </div>
+        <div class="bs-stats-master-rows">${rows.join('')}</div>
+      </article>`;
+  }
+
+  function renderBsStatsMasterMetric(label, metric) {
+    return `
+      <div class="bs-stats-master-metric">
+        <b>${escapeHtml(label)}</b>
+        <span><small>대상</small><strong>${formatBsStatsNumber(metric.target)}</strong></span>
+        <span><small>완료</small><strong>${formatBsStatsNumber(metric.completed)}</strong></span>
+        <span><small>미완료</small><strong>${formatBsStatsNumber(metric.incomplete)}</strong></span>
+        <span><small>진도율</small><strong>${formatBsStatsRate(metric.rate)}</strong></span>
+      </div>`;
+  }
+
+  function toggleBsStatsPart(button) {
+    const card = button.closest('.bs-stats-part-card');
+    if (!card) return;
+    const shouldOpen = !card.classList.contains('is-open');
+    document.querySelectorAll('#bsStatsPartRows .bs-stats-part-card.is-open').forEach(function(openCard) {
+      openCard.classList.remove('is-open');
+      const openButton = openCard.querySelector('.bs-stats-part-toggle');
+      if (openButton) openButton.setAttribute('aria-expanded', 'false');
+    });
+    if (shouldOpen) {
+      card.classList.add('is-open');
+      button.setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  function getBsStatsPrimaryRate(part, selectedType) {
+    if (selectedType === 'BS') return part.bs ? part.bs.rate : null;
+    if (selectedType === 'REWORK') return part.rework ? part.rework.rate : null;
+    const bsTarget = Number(part.bs && part.bs.target || 0);
+    const reworkTarget = Number(part.rework && part.rework.target || 0);
+    const totalTarget = bsTarget + reworkTarget;
+    const totalCompleted = Number(part.bs && part.bs.completed || 0) + Number(part.rework && part.rework.completed || 0);
+    return totalTarget > 0 ? Math.round((totalCompleted / totalTarget) * 1000) / 10 : null;
+  }
+
+  function getBsStatsPartTone(partName) {
+    const key = String(partName || '').replace(/\s+/g, '');
+    if (key === '서비스2') return 'bs-stats-tone-service2';
+    if (key === '서비스3') return 'bs-stats-tone-service3';
+    if (key === '서비스4') return 'bs-stats-tone-service4';
+    return 'bs-stats-tone-service1';
+  }
+
+  function formatBsStatsNumber(value) {
+    const number = Number(value || 0);
+    return isNaN(number) ? '0' : number.toLocaleString('ko-KR', { maximumFractionDigits: 0 });
+  }
+
+  function formatBsStatsRate(value) {
+    if (value === null || value === undefined || value === '' || isNaN(Number(value))) return '-';
+    return Number(value).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+  }
+
+  function getBsStatsProgressWidth(value) {
+    const number = Number(value);
+    if (isNaN(number)) return 0;
+    return Math.max(0, Math.min(number, 100));
   }
 
   function handleAsDailyPartChange() {
@@ -2436,6 +2763,8 @@
         showStatsMenuView();
       } else if (event.state.view === 'asDailyStats') {
         showAsDailyStatsView();
+      } else if (event.state.view === 'bsStats') {
+        showBsStatsView();
       } else if (event.state.view === 'installInfo') {
         showInstallInfoView();
       } else if (event.state.view === 'guide') {

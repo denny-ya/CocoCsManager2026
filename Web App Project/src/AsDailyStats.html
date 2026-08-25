@@ -28,17 +28,76 @@
         <span class="stats-menu-card-arrow material-icons">arrow_forward</span>
       </button>
 
-      <button type="button" class="stats-menu-card is-upcoming" disabled aria-disabled="true">
+      <button type="button" id="statsMenuBsCard" class="stats-menu-card stats-menu-card--bs is-active" onclick="showBsStatsView()">
         <span class="stats-menu-card-icon material-icons">fact_check</span>
         <span class="stats-menu-card-copy">
           <span class="stats-menu-card-heading">
             <strong>BS 실적</strong>
-            <span class="stats-menu-badge">추가 예정</span>
+            <span id="statsMenuBsStatus" class="stats-menu-badge" style="display: none;">권한 없음</span>
           </span>
-          <small>BS 및 리워크 실적 통계</small>
+          <small>정기 안전 품질 점검 및 리워크 누적 진행 현황</small>
         </span>
-        <span class="stats-menu-card-lock material-icons">lock_clock</span>
+        <span id="statsMenuBsIcon" class="stats-menu-card-arrow material-icons">arrow_forward</span>
       </button>
+    </section>
+  </main>
+</div>
+
+<div id="bsStatsView" class="bs-stats-page" style="display: none;">
+  <header class="bs-stats-appbar">
+    <button type="button" class="bs-stats-back-btn" onclick="showMainView()" aria-label="뒤로가기">
+      <span class="material-icons">arrow_back</span>
+    </button>
+    <div>
+      <div class="bs-stats-eyebrow">실적 및 통계</div>
+      <h2 class="bs-stats-title">BS 실적</h2>
+    </div>
+  </header>
+
+  <main class="bs-stats-content">
+    <section class="bs-stats-filter-card">
+      <div class="bs-stats-filter-grid">
+        <label class="bs-stats-field">
+          <span>파트</span>
+          <select id="bsStatsPart">
+            <option value="전체">전체</option>
+          </select>
+        </label>
+
+        <label class="bs-stats-field">
+          <span>구분</span>
+          <select id="bsStatsType">
+            <option value="ALL">전체</option>
+            <option value="BS">정기점검 BS</option>
+            <option value="REWORK">HY카트 리워크</option>
+          </select>
+        </label>
+      </div>
+
+      <button type="button" class="bs-stats-search-btn" onclick="loadBsPerformanceStats()">
+        <span class="material-icons">search</span>
+        조회
+      </button>
+    </section>
+
+    <section id="bsStatsSummary" class="bs-stats-summary">
+      <div class="bs-stats-empty">
+        <span class="material-icons">query_stats</span>
+        <p>파트와 구분을 선택한 뒤 실적을 조회해주세요</p>
+      </div>
+    </section>
+
+    <section class="bs-stats-detail-section">
+      <div class="bs-stats-section-title">
+        <span>파트별 실적</span>
+        <small id="bsStatsPartCount">0개 파트</small>
+      </div>
+      <div id="bsStatsPartRows" class="bs-stats-part-rows">
+        <div class="bs-stats-empty compact">
+          <span class="material-icons">bar_chart</span>
+          <p>조회된 파트 실적이 없습니다</p>
+        </div>
+      </div>
     </section>
   </main>
 </div>

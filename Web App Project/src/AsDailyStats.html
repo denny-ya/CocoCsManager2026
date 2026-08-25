@@ -1,3 +1,48 @@
+<div id="statsMenuView" class="stats-menu-page" style="display: none;">
+  <header class="stats-menu-appbar">
+    <button type="button" class="stats-menu-back-btn" onclick="showMainView()" aria-label="뒤로가기">
+      <span class="material-icons">arrow_back</span>
+    </button>
+    <div>
+      <h2 class="stats-menu-title">실적 및 통계</h2>
+    </div>
+  </header>
+
+  <main class="stats-menu-content">
+    <section class="stats-menu-intro">
+      <span class="stats-menu-intro-icon material-icons">insights</span>
+      <div>
+        <p class="stats-menu-intro-label">통계 메뉴</p>
+        <h3>확인할 실적을 선택해주세요</h3>
+        <p>업무별 실적 화면을 한곳에서 확인할 수 있습니다.</p>
+      </div>
+    </section>
+
+    <section class="stats-menu-list" aria-label="실적 및 통계 하위 메뉴">
+      <button type="button" class="stats-menu-card stats-menu-card--as is-active" onclick="showAsDailyStatsView()">
+        <span class="stats-menu-card-icon material-icons">today</span>
+        <span class="stats-menu-card-copy">
+          <strong>AS 일일 실적</strong>
+          <small>hy COCO의 AS 실적 현황(경수리 및 중수리)<br>실적 업데이트 : 매일(오전)</small>
+        </span>
+        <span class="stats-menu-card-arrow material-icons">arrow_forward</span>
+      </button>
+
+      <button type="button" class="stats-menu-card is-upcoming" disabled aria-disabled="true">
+        <span class="stats-menu-card-icon material-icons">fact_check</span>
+        <span class="stats-menu-card-copy">
+          <span class="stats-menu-card-heading">
+            <strong>BS 실적</strong>
+            <span class="stats-menu-badge">추가 예정</span>
+          </span>
+          <small>BS 및 리워크 실적 통계</small>
+        </span>
+        <span class="stats-menu-card-lock material-icons">lock_clock</span>
+      </button>
+    </section>
+  </main>
+</div>
+
 <div id="asDailyStatsView" class="as-daily-page" style="display: none;">
   <div class="as-daily-appbar">
     <button type="button" class="as-daily-back-btn" onclick="showMainView()" aria-label="뒤로가기">

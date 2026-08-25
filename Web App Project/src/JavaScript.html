@@ -64,7 +64,7 @@
     document.getElementById('loginView').style.display = 'block';
     document.getElementById('changePwView').style.display = 'none';
     document.getElementById('mainView').style.display = 'none';
-    hideAsDailyStatsView();
+    hideStatsViews();
     resetChangePasswordForm();
   }
 
@@ -74,7 +74,7 @@
     document.getElementById('loginView').style.display = 'none';
     document.getElementById('changePwView').style.display = 'block';
     document.getElementById('mainView').style.display = 'none';
-    hideAsDailyStatsView();
+    hideStatsViews();
     updatePasswordPolicyChecklist();
     updateChangePwMatchHint();
   }
@@ -87,7 +87,7 @@
     document.getElementById('deliveryView').style.display = 'none';
     const iv = document.getElementById('installInfoView');
     if (iv) iv.style.display = 'none';
-    hideAsDailyStatsView();
+    hideStatsViews();
     const gv = document.getElementById('guideView');
     if (gv) {
       gv.style.display = 'none';
@@ -113,6 +113,16 @@
     if (modal) modal.style.display = 'none';
   }
 
+  function hideStatsMenuView() {
+    const view = document.getElementById('statsMenuView');
+    if (view) view.style.display = 'none';
+  }
+
+  function hideStatsViews() {
+    hideStatsMenuView();
+    hideAsDailyStatsView();
+  }
+
   const GUIDE_EMBED_URL = 'https://docs.google.com/presentation/d/1gbsH7E3HobsTIs3K8xRW1g-Oz6GI05005VeyNhshSAI/embed?start=false&loop=false&delayms=0';
 
   const MENU_ITEMS = [
@@ -121,7 +131,7 @@
     { id: 'parts', title: '부품 탈거 관리', desc: '부품 탈거 및 회수 부품 이력 관리', icon: 'handyman', color: '#2E7D32' },
     { id: 'installInfo', title: '부품 장착 정보', desc: '카트 주요 부품의 장착 정보', icon: 'precision_manufacturing', color: '#455A64', action: () => showInstallInfoView() },
     { id: 'delivery', title: '배차 관리', desc: '실시간 배차 및 이동 현황', icon: 'local_shipping', color: '#6A1B9A', action: () => showDeliveryView() },
-    { id: 'stats', title: '실적 통계', desc: '일일 AS 실적 현황', icon: 'bar_chart', color: '#1565C0', action: () => showAsDailyStatsView() },
+    { id: 'stats', title: '실적 통계', desc: '업무별 실적 및 통계 현황', icon: 'bar_chart', color: '#1565C0', action: () => showStatsMenuView() },
     { id: 'guide', title: '업무 가이드', desc: 'CS팀 업무 매뉴얼', icon: 'menu_book', color: '#00838F', action: () => showGuideView() }
   ];
 
@@ -132,7 +142,7 @@
     document.getElementById('deliveryView').style.display = 'none';
     const iv = document.getElementById('installInfoView');
     if (iv) iv.style.display = 'none';
-    hideAsDailyStatsView();
+    hideStatsViews();
     const gv = document.getElementById('guideView');
     if (gv) gv.style.display = 'flex';
     const gf = document.getElementById('guideFrame');
@@ -268,7 +278,7 @@
     if (gv) gv.style.display = 'none';
     const iv = document.getElementById('installInfoView');
     if (iv) iv.style.display = 'block';
-    hideAsDailyStatsView();
+    hideStatsViews();
 
     if (history.state?.view !== 'installInfo') {
       history.pushState({ view: 'installInfo' }, 'Install Info');
@@ -333,7 +343,7 @@
     document.getElementById('deliveryView').style.display = 'none';
     const iv = document.getElementById('installInfoView');
     if (iv) iv.style.display = 'none';
-    hideAsDailyStatsView();
+    hideStatsViews();
 
     if (history.state?.view !== 'branchAddress') {
       history.pushState({ view: 'branchAddress' }, 'Branch Address');
@@ -645,7 +655,7 @@
     document.getElementById('deliveryView').style.display = 'none';
     const iv = document.getElementById('installInfoView');
     if (iv) iv.style.display = 'none';
-    hideAsDailyStatsView();
+    hideStatsViews();
 
     // 뒤로가기용 히스토리 추가
     if (history.state?.view !== 'bsSearch') {
@@ -715,6 +725,33 @@
     history.back();
   }
 
+  function showStatsMenuView() {
+    if (!ensureSessionToken()) return;
+
+    const view = document.getElementById('statsMenuView');
+    if (!view) {
+      console.error('통계 선택 화면을 찾을 수 없어 AS 일일실적으로 이동합니다.');
+      showAsDailyStatsView();
+      return;
+    }
+
+    document.getElementById('mainView').style.display = 'none';
+    document.getElementById('bsSearchView').style.display = 'none';
+    document.getElementById('branchAddressView').style.display = 'none';
+    document.getElementById('deliveryView').style.display = 'none';
+    const iv = document.getElementById('installInfoView');
+    if (iv) iv.style.display = 'none';
+    const gv = document.getElementById('guideView');
+    if (gv) gv.style.display = 'none';
+    hideAsDailyStatsView();
+
+    view.style.display = 'block';
+
+    if (history.state?.view !== 'statsMenu') {
+      history.pushState({ view: 'statsMenu' }, 'Stats Menu');
+    }
+  }
+
   function showAsDailyStatsView() {
     if (!ensureSessionToken()) return;
 
@@ -726,6 +763,7 @@
     if (iv) iv.style.display = 'none';
     const gv = document.getElementById('guideView');
     if (gv) gv.style.display = 'none';
+    hideStatsMenuView();
     const view = document.getElementById('asDailyStatsView');
     if (view) view.style.display = 'block';
 
@@ -2394,6 +2432,8 @@
         showBranchAddressView();
       } else if (event.state.view === 'delivery') {
         showDeliveryView();
+      } else if (event.state.view === 'statsMenu') {
+        showStatsMenuView();
       } else if (event.state.view === 'asDailyStats') {
         showAsDailyStatsView();
       } else if (event.state.view === 'installInfo') {
@@ -2460,7 +2500,7 @@
     document.getElementById('deliveryView').style.display = 'block';
     const iv = document.getElementById('installInfoView');
     if (iv) iv.style.display = 'none';
-    hideAsDailyStatsView();
+    hideStatsViews();
 
     if (history.state?.view !== 'delivery') {
       history.pushState({ view: 'delivery' }, 'Delivery Management');

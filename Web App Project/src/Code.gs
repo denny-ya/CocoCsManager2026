@@ -2992,6 +2992,7 @@ function mapAsDailySummaryRow_(row, headerIndex) {
     cancelDaily: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '접수취소당일')),
     cancelMonthly: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '접수취소누적')),
     cancelDisplay: getAsDailyCell_(row, headerIndex, '취소표시'),
+    carryoverMonthly: parseAsDailyNumber_(getAsDailyCell_(row, headerIndex, '전월이월')),
     validation: getAsDailyCell_(row, headerIndex, '데이터검증')
   };
 }

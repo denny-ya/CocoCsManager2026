@@ -1313,6 +1313,12 @@
     const title = s.displayName || `${res.partFilter || '전체'} ${res.repairTypeFilter || ''}`;
     const filterText = `${res.partFilter || '전체'} · ${res.repairTypeFilter || '-'}`;
     const isHeavyRepair = String(res.repairTypeFilter || '').trim() === '중수리';
+    const carryoverTotal = isHeavyRepair
+      ? calculateAsDailyCarryoverTotal(res.rows, {
+          partFilter: res.partFilter,
+          repairTypeFilter: res.repairTypeFilter
+        })
+      : 0;
 
     summaryEl.innerHTML = `
       <div class="as-daily-summary-card">
@@ -1328,7 +1334,7 @@
           ${renderAsDailyPrimaryKpis(s, isHeavyRepair)}
         </div>
 
-        ${renderAsDailySummaryKpiGrid(s, isHeavyRepair)}
+        ${renderAsDailySummaryKpiGrid(s, isHeavyRepair, carryoverTotal)}
       </div>`;
 
     bindAsDailyDetailButtons(summaryEl);
@@ -1357,7 +1363,7 @@
       </div>`;
   }
 
-  function renderAsDailySummaryKpiGrid(summary, isHeavyRepair) {
+  function renderAsDailySummaryKpiGrid(summary, isHeavyRepair, carryoverTotal) {
     if (isHeavyRepair) {
       return `
         <div class="as-daily-kpi-grid as-daily-kpi-grid-heavy">
@@ -1375,7 +1381,7 @@
           </button>
           <div class="as-daily-kpi-box blue">
             <span>전월 이월</span>
-            <strong>${formatAsDailyCarryover(summary)}</strong>
+            <strong>${formatAsDailyCarryoverValue(carryoverTotal)}</strong>
           </div>
         </div>`;
     }
@@ -1975,9 +1981,23 @@
   }
 
   function formatAsDailyCarryover(row) {
-    const receiptMonthly = Number((row && row.receiptMonthly) || 0);
-    const completeMonthly = Number((row && row.completeMonthly) || 0);
-    const carryover = completeMonthly - receiptMonthly;
+    return formatAsDailyCarryoverValue(calculateAsDailyCarryover(row));
+  }
+
+  function calculateAsDailyCarryover(row) {
+    const carryover = Number((row && row.carryoverMonthly) || 0);
+    return carryover > 0 ? carryover : 0;
+  }
+
+  function calculateAsDailyCarryoverTotal(rows, context) {
+    const groups = buildAsDailyGroups(Array.isArray(rows) ? rows : [], context || {});
+    return groups.reduce(function(total, group) {
+      return total + calculateAsDailyCarryover(group.row);
+    }, 0);
+  }
+
+  function formatAsDailyCarryoverValue(value) {
+    const carryover = Number(value || 0);
     return carryover > 0 ? formatAsDailyNumber(carryover) : '-';
   }
 

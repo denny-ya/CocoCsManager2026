@@ -101,7 +101,8 @@ const AS_HEADERS = {
     '접수취소누적',
     '취소표시',
     '표시여부',
-    '데이터검증'
+    '데이터검증',
+    '전월이월'
   ]
 };
 
@@ -327,7 +328,8 @@ function refreshAsDailySummary_(targetDateText) {
           metrics.cancelMonthly,
           metrics.cancelDisplay,
           1,
-          metrics.validationText
+          metrics.validationText,
+          metrics.carryoverMonthly
         ]);
       });
     });
@@ -364,6 +366,11 @@ function setupAndRefreshAsDailyWork() {
 function setupHeaderRow_(ss, sheetName, headers) {
   let sheet = ss.getSheetByName(sheetName);
   if (!sheet) sheet = ss.insertSheet(sheetName);
+
+  const missingColumnCount = headers.length - sheet.getMaxColumns();
+  if (missingColumnCount > 0) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), missingColumnCount);
+  }
 
   const headerRange = sheet.getRange(1, 1, 1, headers.length);
   headerRange.setValues([headers]);
@@ -788,6 +795,7 @@ function calculateSummaryMetrics_(items, targetDateText, monthStartText, targetD
   let longIncomplete = 0;
   let cancelDaily = 0;
   let cancelMonthly = 0;
+  let carryoverMonthly = 0;
   const leadValues = [];
   let validationCount = 0;
 
@@ -800,6 +808,7 @@ function calculateSummaryMetrics_(items, targetDateText, monthStartText, targetD
       if (isSameDate_(completeDate, targetDateText)) completeDaily++;
       if (isDateInRange_(completeDate, monthStartText, targetDateText)) {
         completeMonthly++;
+        if (isDateBefore_(item.receiptDate, monthStartText)) carryoverMonthly++;
         const lead = getLeadDaysForSummary_(item);
         if (lead !== '') leadValues.push(Number(lead));
       }
@@ -844,7 +853,8 @@ function calculateSummaryMetrics_(items, targetDateText, monthStartText, targetD
     cancelDaily: cancelDaily,
     cancelMonthly: cancelMonthly,
     cancelDisplay: cancelDaily || cancelMonthly ? cancelDaily + '/' + cancelMonthly : '-',
-    validationText: validationCount ? '검증 ' + validationCount + '건' : ''
+    validationText: validationCount ? '검증 ' + validationCount + '건' : '',
+    carryoverMonthly: carryoverMonthly
   };
 }
 
@@ -1021,6 +1031,11 @@ function isSameDate_(dateText, targetDateText) {
 function isDateInRange_(dateText, startDateText, endDateText) {
   const text = normalizeDateText_(dateText);
   return !!(text && text >= startDateText && text <= endDateText);
+}
+
+function isDateBefore_(dateText, boundaryDateText) {
+  const text = normalizeDateText_(dateText);
+  return !!(text && text < boundaryDateText);
 }
 
 function isDateOnOrBefore_(dateText, targetDateText) {

@@ -2404,9 +2404,10 @@ function getAsDailyStats(sessionToken, targetDate, partFilter, repairTypeFilter)
       };
     }
 
+    assertAsDailyHeavyPartRows_(rows);
     const summary = selectAsDailySummaryRow_(rows, selectedPart);
     const detailRows = rows.filter(function (row) {
-      if (row === summary) return false;
+      if (row === summary && !(selectedRepairType === '중수리' && row.rowType === 'PART')) return false;
       return row.rowType !== 'TOTAL';
     });
 
@@ -2570,6 +2571,7 @@ function exportAsDailyStatsExcel(sessionToken, targetDate, partFilter, repairTyp
       return { success: false, message: '선택한 조건에 맞는 다운로드 데이터가 없습니다.' };
     }
 
+    assertAsDailyHeavyPartRows_(rows);
     const reportTitle = 'AS일일실적_' + selectedDate + '_' + selectedPart + '_' + selectedRepairType + '.xlsx';
     const temp = SpreadsheetApp.create('AS일일실적_다운로드_' + selectedDate + '_' + new Date().getTime());
     tempSpreadsheetId = temp.getId();
@@ -2770,7 +2772,7 @@ function appendAsDailyHeavyExcelRows_(sheet, heavyRows, rowNo) {
   if (total) rowNo = writeAsDailyExcelMetricRow_(sheet, rowNo, total.displayName, '', total, true, 'total', true);
 
   heavyRows
-    .filter(function(row) { return row.rowType === 'FACTORY' || row.rowType === 'CENTER'; })
+    .filter(function(row) { return row.rowType === 'FACTORY' || row.rowType === 'PART'; })
     .forEach(function(row) {
       rowNo = writeAsDailyExcelMetricRow_(sheet, rowNo, row.displayName, '', row, true, 'part', true);
     });
@@ -2780,6 +2782,7 @@ function appendAsDailyHeavyExcelRows_(sheet, heavyRows, rowNo) {
 
 function appendAsDailyFilteredExcelRows_(sheet, rows, rowNo, isHeavyRepair) {
   rows.forEach(function(row) {
+    if (isHeavyRepair && row.rowType !== 'TOTAL' && row.rowType !== 'PART' && row.rowType !== 'FACTORY') return;
     const style = row.rowType === 'TOTAL' ? 'total' : (row.rowType === 'PART' || row.rowType === 'CENTER' || row.rowType === 'FACTORY' ? 'part' : '');
     const mergeLabel = row.rowType !== 'MASTER';
     rowNo = writeAsDailyExcelMetricRow_(
@@ -2864,7 +2867,7 @@ function createAsDailyCacheKey_(namespace, parts) {
     seed,
     Utilities.Charset.UTF_8
   );
-  return 'asDaily:' + namespace + ':' + toHex_(digest).substring(0, 40);
+  return 'asDaily:heavyPartV2:' + namespace + ':' + toHex_(digest).substring(0, 40);
 }
 
 function getAsDailyCache_(cacheKey) {
@@ -2997,9 +3000,23 @@ function mapAsDailySummaryRow_(row, headerIndex) {
   };
 }
 
+function assertAsDailyHeavyPartRows_(rows) {
+  const heavyRows = rows.filter(function(row) { return row.repairTypeFilter === '중수리'; });
+  const missingPart = heavyRows.some(function(row) {
+    return row.rowType === 'CENTER' && !heavyRows.some(function(partRow) {
+      return partRow.rowType === 'PART' && partRow.part === row.part;
+    });
+  });
+  if (missingPart) throw new Error('중수리 파트 전체 집계가 필요합니다. 데이터시트의 새 집계 코드로 AS_DAILY_SUMMARY를 갱신해주세요.');
+}
+
 function selectAsDailySummaryRow_(rows, selectedPart) {
   for (let i = 0; i < rows.length; i++) {
     if (rows[i].rowType === 'TOTAL') return rows[i];
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].rowType === 'PART' && rows[i].part === selectedPart) return rows[i];
   }
 
   for (let i = 0; i < rows.length; i++) {
@@ -3091,6 +3108,15 @@ function matchesAsDailyDetailType_(item, detailType, targetDateText, monthStartT
   if (detailType === 'receiptDaily') {
     return item.receiptDate === targetDateText;
   }
+  if (detailType === 'receiptMonthly') {
+    return isAsDailyDateInRange_(item.receiptDate, monthStartText, targetDateText);
+  }
+  if (detailType === 'completeMonthly' || detailType === 'carryoverMonthly') {
+    const completedThisMonth = item.processStatus === '완료' &&
+      isAsDailyDateInRange_(completeDate, monthStartText, targetDateText);
+    return completedThisMonth && (detailType === 'completeMonthly' ||
+      !!(item.receiptDate && item.receiptDate < monthStartText));
+  }
   if (detailType === 'completeDaily') {
     return item.processStatus === '완료' && completeDate === targetDateText;
   }
@@ -3107,7 +3133,7 @@ function matchesAsDailyDetailType_(item, detailType, targetDateText, monthStartT
       isAsDailyLongIncomplete_(item.receiptDate, targetDateObj);
   }
   if (detailType === 'incomplete') {
-    return isAsDailyIncompleteAsOfTarget_(item, targetDateText) && !item.waiting;
+    return isAsDailyIncompleteAsOfTarget_(item, targetDateText) && (item.repairType === '중수리' || !item.waiting);
   }
   return false;
 }
@@ -3143,7 +3169,10 @@ function mapAsDailyDetailItem_(item, detailType, targetDateText, targetDateObj) 
 }
 
 function shouldShowAsDailyTraceInfo_(detailType) {
-  return detailType === 'receiptDaily' ||
+  return detailType === 'receiptMonthly' ||
+    detailType === 'completeMonthly' ||
+    detailType === 'carryoverMonthly' ||
+    detailType === 'receiptDaily' ||
     detailType === 'completeDaily' ||
     detailType === 'incomplete' ||
     detailType === 'waiting' ||
@@ -3153,10 +3182,10 @@ function shouldShowAsDailyTraceInfo_(detailType) {
 }
 
 function getAsDailyDetailExtra_(item, detailType, completeDate, elapsedDays, leadDays) {
-  if (detailType === 'receiptDaily') {
+  if (detailType === 'receiptDaily' || detailType === 'receiptMonthly') {
     return { label: '접수일', value: item.receiptDate || '-', sortDate: item.receiptDate };
   }
-  if (detailType === 'completeDaily') {
+  if (detailType === 'completeDaily' || detailType === 'completeMonthly' || detailType === 'carryoverMonthly') {
     return { label: '완료일', value: completeDate || '-', sortDate: completeDate };
   }
   if (detailType === 'cancelDaily' || detailType === 'cancelMonthly') {
@@ -3187,6 +3216,9 @@ function getAsDailyDetailExtra_(item, detailType, completeDate, elapsedDays, lea
 }
 
 function getAsDailyDetailTitle_(detailType) {
+  if (detailType === 'receiptMonthly') return '접수 누적 상세';
+  if (detailType === 'completeMonthly') return '완료 누적 상세';
+  if (detailType === 'carryoverMonthly') return '전월 이월 상세';
   if (detailType === 'receiptDaily') return '접수 상세';
   if (detailType === 'completeDaily') return '완료 상세';
   if (detailType === 'cancelDaily') return '접수취소 상세';

@@ -275,8 +275,7 @@ function refreshAsDailySummary_(targetDateText) {
     targetDates.push(inferTargetDateFromWork_(workValues, workIndex) || todayKstDate_());
   }
 
-  const mapRows = getAsActiveMapRows_(ss);
-  const filterPairs = buildAsSummaryFilterPairs_(mapRows);
+  let mapRows = getAsActiveMapRows_(ss);
   const workItems = [];
 
   for (let i = 1; i < workValues.length; i++) {
@@ -284,20 +283,29 @@ function refreshAsDailySummary_(targetDateText) {
     if (item.receiptNo) workItems.push(item);
   }
 
+  mapRows = buildAsHeavyPartMapRows_(mapRows, workItems);
+  const filterPairs = buildAsSummaryFilterPairs_(mapRows);
+  const summaryGroups = [];
+  filterPairs.forEach(function(pair) {
+    mapRows.forEach(function(mapRow) {
+      if (!shouldIncludeMapRowForFilter_(mapRow, pair)) return;
+      summaryGroups.push({
+        pair: pair,
+        mapRow: mapRow,
+        items: workItems.filter(function(item) { return matchesSummaryRow_(item, mapRow, pair); })
+      });
+    });
+  });
   const output = [];
   targetDates.forEach(function(targetDate) {
     const targetDateValue = formatDateText_(targetDate);
     const targetMonth = targetDateValue.substring(0, 7);
     const monthStart = targetMonth + '-01';
 
-    filterPairs.forEach(function(pair) {
-      mapRows.forEach(function(mapRow) {
-        if (!shouldIncludeMapRowForFilter_(mapRow, pair)) return;
-
-        const matchedItems = workItems.filter(function(item) {
-          return matchesSummaryRow_(item, mapRow, pair);
-        });
-        const metrics = calculateSummaryMetrics_(matchedItems, targetDateValue, monthStart, targetDate);
+    summaryGroups.forEach(function(group) {
+        const pair = group.pair;
+        const mapRow = group.mapRow;
+        const metrics = calculateSummaryMetrics_(group.items, targetDateValue, monthStart, targetDate);
 
         output.push([
           targetDateValue,
@@ -331,7 +339,6 @@ function refreshAsDailySummary_(targetDateText) {
           metrics.validationText,
           metrics.carryoverMonthly
         ]);
-      });
     });
   });
 
@@ -699,6 +706,41 @@ function getAsActiveMapRows_(ss) {
     return Number(a.displayOrder || 0) - Number(b.displayOrder || 0);
   });
   return rows;
+}
+
+// 중수리는 작업 건에서 파트와 센터를 각각 집계하여 LT 평균의 중복 합산을 방지합니다.
+function buildAsHeavyPartMapRows_(mapRows, workItems) {
+  const centersByPart = {
+    '서비스1': ['하남센터'],
+    '서비스2': ['계양센터'],
+    '서비스3': ['대구센터', '부산센터', '경남센터'],
+    '서비스4': ['호남센터', '충청센터', '제주센터']
+  };
+  const parts = Object.keys(centersByPart).filter(function(part) {
+    return mapRows.some(function(row) { return row.repairType === '중수리' && row.part === part; });
+  });
+  const result = mapRows.filter(function(row) {
+    return row.repairType !== '중수리' || parts.indexOf(row.part) === -1;
+  });
+  parts.forEach(function(part, partIndex) {
+    const order = 102 + partIndex;
+    const base = { repairType: '중수리', part: part, masterCode: '', masterName: '' };
+    result.push(Object.assign({}, base, { displayOrder: order, rowType: 'PART', centerName: '', displayName: part }));
+    const centers = centersByPart[part].slice();
+    // 매핑되지 않은 센터도 하위 집계에 남겨 파트 합계에서 작업이 사라지지 않도록 합니다.
+    workItems.forEach(function(item) {
+      if (item.repairType !== '중수리' || item.partGroup !== part) return;
+      const center = String(item.centerName || '').trim();
+      if (centers.indexOf(center) === -1) centers.push(center);
+    });
+    centers.forEach(function(center, index) {
+      result.push(Object.assign({}, base, {
+        displayOrder: order + (index + 1) / 100,
+        rowType: 'CENTER', centerName: center, displayName: center || '센터 미지정'
+      }));
+    });
+  });
+  return result.sort(function(a, b) { return Number(a.displayOrder || 0) - Number(b.displayOrder || 0); });
 }
 
 function buildAsSummaryFilterPairs_(mapRows) {

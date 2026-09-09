@@ -1367,35 +1367,20 @@
     if (isHeavyRepair) {
       return `
         <div class="as-daily-kpi-grid as-daily-kpi-grid-heavy">
-          <div class="as-daily-kpi-box blue">
-            <span>접수 누적</span>
-            <strong>${formatAsDailyNumber(summary.receiptMonthly)}</strong>
-          </div>
-          <div class="as-daily-kpi-box blue">
-            <span>완료 누적</span>
-            <strong>${formatAsDailyNumber(summary.completeMonthly)}</strong>
-          </div>
+          ${renderAsDailyCumulativeKpi('접수 누적', summary.receiptMonthly, 'receiptMonthly')}
+          ${renderAsDailyCumulativeKpi('완료 누적', summary.completeMonthly, 'completeMonthly')}
           <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button warning" data-as-daily-detail="longIncomplete">
             <span>30일 이상</span>
             <strong>${formatAsDailyNumber(summary.longIncomplete)}</strong>
           </button>
-          <div class="as-daily-kpi-box blue">
-            <span>전월 이월</span>
-            <strong>${formatAsDailyCarryoverValue(carryoverTotal)}</strong>
-          </div>
+          ${renderAsDailyCumulativeKpi('전월 이월', carryoverTotal, 'carryoverMonthly', formatAsDailyCarryoverValue(carryoverTotal))}
         </div>`;
     }
 
     return `
       <div class="as-daily-kpi-grid">
-        <div class="as-daily-kpi-box blue">
-          <span>접수 누적</span>
-          <strong>${formatAsDailyNumber(summary.receiptMonthly)}</strong>
-        </div>
-        <div class="as-daily-kpi-box blue">
-          <span>완료 누적</span>
-          <strong>${formatAsDailyNumber(summary.completeMonthly)}</strong>
-        </div>
+        ${renderAsDailyCumulativeKpi('접수 누적', summary.receiptMonthly, 'receiptMonthly')}
+        ${renderAsDailyCumulativeKpi('완료 누적', summary.completeMonthly, 'completeMonthly')}
         <button type="button" class="as-daily-kpi-box as-daily-kpi-box-button" data-as-daily-detail="visitDaily">
           <span>미출동 / 출동</span>
           <strong>${formatAsDailyNumber(summary.noVisitDaily)} / ${formatAsDailyNumber(summary.visitDaily)}</strong>
@@ -1421,6 +1406,13 @@
           <strong>${formatAsDailyNumber(summary.cancelMonthly)}</strong>
         </button>
       </div>`;
+  }
+
+  function renderAsDailyCumulativeKpi(label, value, detailType, displayValue) {
+    return `<button type="button" class="as-daily-kpi-box as-daily-kpi-box-button blue" data-as-daily-detail="${detailType}" ${Number(value) > 0 ? '' : 'disabled'}>
+      <span>${label}</span>
+      <strong>${displayValue === undefined ? formatAsDailyNumber(value) : displayValue}</strong>
+    </button>`;
   }
 
   function bindAsDailyDetailButtons(rootEl) {
@@ -1544,11 +1536,30 @@
     });
 
     return orderedKeys
-      .map(function (key) { return groupMap[key]; })
+      .map(function (key) {
+        const group = groupMap[key];
+        group.items.sort(function (a, b) {
+          return compareAsDailyNames(a.masterName, b.masterName);
+        });
+        return group;
+      })
       .sort(function (a, b) {
-        if (a.order !== b.order) return a.order - b.order;
-        return a.label.localeCompare(b.label, 'ko');
+        return compareAsDailyNames(a.label, b.label);
       });
+  }
+
+  function compareAsDailyNames(a, b) {
+    const left = String(a || '').trim();
+    const right = String(b || '').trim();
+    if (!left || !right) return left ? -1 : (right ? 1 : 0);
+    return left.localeCompare(right, 'ko', { numeric: true });
+  }
+
+  function compareAsDailyRowNames(a, b) {
+    return compareAsDailyNames(
+      a.masterName || a.centerName || a.displayName || a.part,
+      b.masterName || b.centerName || b.displayName || b.part
+    );
   }
 
   function getAsDailyDetailGroupMeta(item) {
@@ -1741,6 +1752,9 @@
   }
 
   function getAsDailyDetailTitle(detailType) {
+    if (detailType === 'receiptMonthly') return '접수 누적 상세';
+    if (detailType === 'completeMonthly') return '완료 누적 상세';
+    if (detailType === 'carryoverMonthly') return '전월 이월 상세';
     if (detailType === 'receiptDaily') return '접수 상세';
     if (detailType === 'completeDaily') return '완료 상세';
     if (detailType === 'cancelDaily') return '접수취소 상세';
@@ -1774,11 +1788,11 @@
       const badge = getAsDailyRowTypeLabel(row.rowType);
       const meta = [row.part, row.centerName, row.masterName].filter(function (x) { return !!x; }).join(' / ');
       const childCount = group.children.length;
-      const hasCumulativeSummary = shouldRenderAsDailyCumulativeSummary(row, childCount);
+      const isStaticCard = String(row.repairTypeFilter || '').trim() === '중수리' && childCount === 0;
       const partToneClass = getAsDailyPartToneClass(row);
       return `
-        <details class="as-daily-accordion ${partToneClass}">
-          <summary class="as-daily-accordion-summary">
+        <${isStaticCard ? 'article' : 'details'} class="as-daily-accordion ${partToneClass}">
+          <${isStaticCard ? 'div' : 'summary'} class="as-daily-accordion-summary${isStaticCard ? ' as-daily-static-summary' : ''}">
             <div class="as-daily-row-head">
               <div>
                 <div class="as-daily-row-title">${escapeHtml(row.displayName || '-')}</div>
@@ -1786,31 +1800,19 @@
               </div>
               <div class="as-daily-row-head-actions">
                 <div class="as-daily-row-badge">${escapeHtml(badge)}</div>
-                <span class="material-icons as-daily-accordion-icon">expand_more</span>
+                ${isStaticCard ? '' : '<span class="material-icons as-daily-accordion-icon">expand_more</span>'}
               </div>
             </div>
 
             ${renderAsDailyMiniGrid(row)}
-          </summary>
+          </${isStaticCard ? 'div' : 'summary'}>
 
-          <div class="as-daily-accordion-body">
-            <div class="as-daily-child-count">${childCount ? `${childCount}건 상세` : (hasCumulativeSummary ? '누적 상세' : '하위 상세 없음')}</div>
-            ${childCount ? group.children.map(renderAsDailyChildRow).join('') : renderAsDailyEmptyBody(row, hasCumulativeSummary)}
-          </div>
-        </details>`;
+          ${isStaticCard ? '' : `<div class="as-daily-accordion-body">
+            <div class="as-daily-child-count">${childCount ? (row.repairTypeFilter === '중수리' ? `${childCount}개 센터` : `${childCount}건 상세`) : '하위 상세 없음'}</div>
+            ${childCount ? group.children.map(renderAsDailyChildRow).join('') : '<div class="as-daily-child-empty">표시할 하위 상세가 없습니다.</div>'}
+          </div>`}
+        </${isStaticCard ? 'article' : 'details'}>`;
     }).join('');
-  }
-
-  function shouldRenderAsDailyCumulativeSummary(row, childCount) {
-    if (childCount > 0) return false;
-    const repairType = String(row.repairTypeFilter || '').trim();
-    const rowType = String(row.rowType || '').trim();
-    return repairType === '중수리' && (rowType === 'CENTER' || rowType === 'FACTORY');
-  }
-
-  function renderAsDailyEmptyBody(row, hasCumulativeSummary) {
-    if (hasCumulativeSummary) return renderAsDailyCumulativeSummary(row);
-    return '<div class="as-daily-child-empty">표시할 하위 상세가 없습니다.</div>';
   }
 
   function getAsDailyPartToneClass(row) {
@@ -1843,7 +1845,7 @@
       });
     }
 
-    return topRows.map(function (topRow) {
+    return topRows.sort(compareAsDailyRowNames).map(function (topRow) {
       return {
         row: topRow,
         children: getAsDailyChildren(rows, topRow, selectedPart)
@@ -1852,13 +1854,20 @@
   }
 
   function getAsDailyTopRowTypes(selectedPart, selectedRepairType) {
+    if (selectedRepairType === '중수리') return ['PART', 'FACTORY'];
     if (selectedPart !== '전체') return ['CENTER', 'FACTORY'];
-    if (selectedRepairType === '중수리') return ['CENTER', 'FACTORY'];
     return ['PART', 'FACTORY'];
   }
 
   function getAsDailyChildren(rows, topRow, selectedPart) {
     const topType = String(topRow.rowType || '').trim();
+
+    if (String(topRow.repairTypeFilter || '').trim() === '중수리') {
+      if (topType !== 'PART' || (topRow.part !== '서비스3' && topRow.part !== '서비스4')) return [];
+      return rows.filter(function(row) {
+        return row.rowType === 'CENTER' && row.part === topRow.part;
+      }).sort(compareAsDailyRowNames);
+    }
 
     return rows.filter(function (row) {
       if (row === topRow) return false;
@@ -1886,33 +1895,40 @@
       }
 
       return false;
-    });
+    }).sort(compareAsDailyRowNames);
   }
 
   function renderAsDailyMiniGrid(row) {
     return `
       <div class="as-daily-mini-grid">
-        <div class="as-daily-mini-item blue">
-          <span>접수</span>
-          <strong>${formatAsDailyNumber(row.receiptDaily)}</strong>
-        </div>
-        <div class="as-daily-mini-item blue">
-          <span>완료</span>
-          <strong>${formatAsDailyNumber(row.completeDaily)}</strong>
-        </div>
-        <div class="as-daily-mini-item warning">
-          <span>미완료</span>
-          <strong>${formatAsDailyNumber(row.incompleteTotal)}</strong>
-        </div>
-        <div class="as-daily-mini-item">
-          <span>LT</span>
-          <strong>${formatAsDailyLead(row.leadAverage)}</strong>
-        </div>
-        <div class="as-daily-mini-item warning">
-          <span>취소</span>
-          <strong>${formatAsDailyNumber(row.cancelDaily)}</strong>
-        </div>
+        ${renderAsDailyMetricCells(row, 'as-daily-mini-item')}
       </div>`;
+  }
+
+  function renderAsDailyMetricCells(row, itemClass) {
+    const isHeavy = String(row.repairTypeFilter || '').trim() === '중수리';
+    const longIncomplete = Number(row.longIncomplete) > 0 ? formatAsDailyNumber(row.longIncomplete) : '-';
+    const metrics = [
+      { label: '접수', value: formatAsDailyNumber(row.receiptDaily), suffix: '누적', secondary: formatAsDailyNumber(row.receiptMonthly), tone: 'cumulative' },
+      { label: '완료', value: formatAsDailyNumber(row.completeDaily), suffix: '누적', secondary: formatAsDailyNumber(row.completeMonthly), tone: 'cumulative' },
+      { label: '미완료', value: formatAsDailyNumber(row.incompleteTotal), suffix: '30일', secondary: longIncomplete, tone: 'overdue' },
+      { label: 'LT', value: formatAsDailyLead(row.leadAverage) },
+      isHeavy
+        ? { label: '전월 이월', value: formatAsDailyCarryover(row) }
+        : { label: '취소', value: formatAsDailyNumber(row.cancelDaily), suffix: '누적', secondary: formatAsDailyNumber(row.cancelMonthly), tone: 'overdue' }
+    ];
+
+    return metrics.map(function (metric) {
+      const suffix = metric.suffix ? `<small class="as-daily-metric-${metric.tone}">(${metric.suffix})</small>` : '';
+      const secondary = metric.suffix ? ` <small class="as-daily-metric-${metric.tone}">(${metric.secondary})</small>` : '';
+      const description = metric.suffix === '30일'
+        ? `미완료 ${metric.value}건, 그중 30일 이상 ${longIncomplete === '-' ? '0' : longIncomplete}건`
+        : metric.suffix ? `${metric.label} 당일 ${metric.value}건, 월 누적 ${metric.secondary}건` : `${metric.label} ${metric.value}`;
+      return `<div class="${itemClass}" aria-label="${escapeHtml(description)}">
+        <span>${metric.label}${suffix}</span>
+        <strong>${metric.value}${secondary}</strong>
+      </div>`;
+    }).join('');
   }
 
   function renderAsDailyChildRow(row) {
@@ -1930,52 +1946,7 @@
           <span>${escapeHtml(badge)}</span>
         </div>
         <div class="as-daily-child-metrics">
-          <div>
-            <span>접수</span>
-            <strong>${formatAsDailyNumber(row.receiptDaily)}</strong>
-          </div>
-          <div>
-            <span>완료</span>
-            <strong>${formatAsDailyNumber(row.completeDaily)}</strong>
-          </div>
-          <div class="warning">
-            <span>미완료</span>
-            <strong>${formatAsDailyNumber(row.incompleteTotal)}</strong>
-          </div>
-          <div>
-            <span>LT</span>
-            <strong>${formatAsDailyLead(row.leadAverage)}</strong>
-          </div>
-          <div class="warning">
-            <span>취소</span>
-            <strong>${formatAsDailyNumber(row.cancelDaily)}</strong>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  function renderAsDailyCumulativeSummary(row) {
-    return `
-      <div class="as-daily-cumulative-grid">
-        <div class="as-daily-cumulative-item blue">
-          <span>접수 누적</span>
-          <strong>${formatAsDailyNumber(row.receiptMonthly)}</strong>
-        </div>
-        <div class="as-daily-cumulative-item blue">
-          <span>완료 누적</span>
-          <strong>${formatAsDailyNumber(row.completeMonthly)}</strong>
-        </div>
-        <div class="as-daily-cumulative-item warning">
-          <span>미완료</span>
-          <strong>${formatAsDailyNumber(row.incompleteTotal)}</strong>
-        </div>
-        <div class="as-daily-cumulative-item">
-          <span>LT 평균</span>
-          <strong>${formatAsDailyLead(row.leadAverage)}</strong>
-        </div>
-        <div class="as-daily-cumulative-item blue">
-          <span>전월 이월</span>
-          <strong>${formatAsDailyCarryover(row)}</strong>
+          ${renderAsDailyMetricCells(row, 'as-daily-child-metric')}
         </div>
       </div>`;
   }

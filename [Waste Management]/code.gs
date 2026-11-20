@@ -7,10 +7,53 @@
  *   - 2. 부품명: 분류(B), 부품명(C), 기본수량(D), 최대수량(E)
  *   - 3. 사용자 정보: 사원번호(A), 성명(B)
  *   - 4. 차대정보: 바코드(A), 차대번호(B)
- *   - 1. 데이터(탈거): 차대번호(C), 등록자(D), 등록날짜(E), 부품수량(F~AE)
+ *   - 1. 데이터(탈거): 차대번호(C), 등록자(D), 등록날짜(E), 부품명 헤더(3행)로 수량 연결
  */
 
 var SPREADSHEET_ID = '1esBI7e8vqyHwcPYXmMvPxbg9DB3qsxaNK3yRoR5gXyc';
+
+function canonicalWastePartName_(value) {
+  var name = String(value || '').trim();
+  var aliases = {
+    '메인PCB(진우/캐리어)': '메인 PCB(진우/캐리어)',
+    '디스플레이PCB(진우/캐리어)': '디스플레이 PCB(진우/캐리어)'
+  };
+  return aliases[name] || name;
+}
+
+function normalizeWasteParts_(parts) {
+  return (parts || []).map(function(part) {
+    var result = Object.assign({}, part);
+    result.name = canonicalWastePartName_(part.name);
+    return result;
+  });
+}
+
+function getWastePartColumnMap_(headers) {
+  var columns = Object.create(null);
+  for (var i = 5; i < headers.length; i++) {
+    var name = canonicalWastePartName_(headers[i]);
+    if (!name) continue;
+    if (columns[name] !== undefined) throw new Error('부품 저장 열이 중복됩니다: ' + name);
+    columns[name] = i;
+  }
+  return columns;
+}
+
+function validateWastePartColumns_(parts, columns) {
+  var seen = Object.create(null);
+  (parts || []).forEach(function(part) {
+    var name = canonicalWastePartName_(part.name);
+    if (columns[name] === undefined) {
+      throw new Error('저장 열이 없는 부품입니다: ' + name + '. 시트 헤더를 확인해주세요.');
+    }
+    if (seen[name]) throw new Error('중복 선택된 부품입니다: ' + name);
+    seen[name] = true;
+    if (!Number.isInteger(Number(part.qty)) || Number(part.qty) < 0) {
+      throw new Error('부품 수량은 0 이상의 정수여야 합니다: ' + name);
+    }
+  });
+}
 
 function getSpreadsheet() {
   return SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -86,7 +129,7 @@ function getPartsList() {
   for (var i = 1; i < data.length; i++) {
     var cartVersion = String(data[i][0]).trim(); // A열: 카트버전
     var category = String(data[i][1]).trim();     // B열: 분류
-    var name = String(data[i][2]).trim();          // C열: 부품명
+    var name = canonicalWastePartName_(data[i][2]); // C열: 부품명
     var defaultQty = Number(data[i][3]) || 0;     // D열: 기본수량
     var maxQty = Number(data[i][4]) || 1;         // E열: 최대수량
     var newPrice = Number(String(data[i][5]).replace(/,/g, '')) || 0;     // F열: 신품 AS단가
@@ -187,7 +230,7 @@ function checkDuplicateVin(vin) {
       // 부품명 → 기존 수량 매핑
       var existingParts = {};
       for (var h = 0; h < headerRow.length; h++) {
-        var headerName = String(headerRow[h]).trim();
+        var headerName = canonicalWastePartName_(headerRow[h]);
         var val = Number(rowData[h]) || 0;
         if (headerName && val > 0) {
           existingParts[headerName] = val;
@@ -228,19 +271,16 @@ function updateRecord(row, vin, empNo, parts) {
 
   var lastCol = sheet.getLastColumn();
   var headerRow = sheet.getRange(3, 1, 1, lastCol).getValues()[0];
-  var partColumnMap = {};
-  for (var h = 0; h < headerRow.length; h++) {
-    var headerName = String(headerRow[h]).trim();
-    if (headerName) {
-      partColumnMap[headerName] = h;
-    }
-  }
+  var partColumnMap = getWastePartColumnMap_(headerRow);
+  parts = normalizeWasteParts_(parts);
+  validateWastePartColumns_(parts, partColumnMap);
 
   // 기존 행 데이터 읽기 (A, B열 보존)
   var existingRow = sheet.getRange(row, 1, 1, lastCol).getValues()[0];
+  var existingFormulas = sheet.getRange(row, 1, 1, lastCol).getFormulas()[0];
   var rowData = [];
   for (var col = 0; col < lastCol; col++) {
-    rowData[col] = existingRow[col]; // 기존 값 유지
+    rowData[col] = existingFormulas[col] || existingRow[col];
   }
 
   rowData[2] = String(vin);
@@ -294,13 +334,9 @@ function submitRecord(vin, empNo, parts) {
 
   // 3행(인덱스 2)의 헤더를 읽어서 부품명 → 열 인덱스 매핑
   var headerRow = sheet.getRange(3, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var partColumnMap = {};  // { 부품명: 열인덱스 }
-  for (var h = 0; h < headerRow.length; h++) {
-    var headerName = String(headerRow[h]).trim();
-    if (headerName) {
-      partColumnMap[headerName] = h;
-    }
-  }
+  var partColumnMap = getWastePartColumnMap_(headerRow);
+  parts = normalizeWasteParts_(parts);
+  validateWastePartColumns_(parts, partColumnMap);
 
   // 행 데이터 초기화 (헤더 열 수만큼)
   var totalCols = headerRow.length;
@@ -357,6 +393,7 @@ function submitTransfer(dateStr, transferType, parts) {
   if (!dateStr) return { success: false, error: '등록일자를 선택해주세요.' };
   if (!transferType) return { success: false, error: '이관구분을 선택해주세요.' };
   if (!parts || parts.length === 0) return { success: false, error: '부품을 선택해주세요.' };
+  parts = normalizeWasteParts_(parts);
 
   var sheet = getSheet('5. 재사용품 이관');
   var lastRow = sheet.getLastRow();
@@ -426,7 +463,7 @@ function getGoalData(year, month) {
     var rMonth = String(data[i][1]).trim();
     
     if (rYear === targetYear && rMonth === targetMonth) {
-      var name = String(data[i][3]).trim(); // D열: 부품명
+      var name = canonicalWastePartName_(data[i][3]); // D열: 부품명
       var qty = Number(data[i][4]) || 0;    // E열: 목표수량
       if (qty > 0) {
         result.push({ name: name, qty: qty });
@@ -442,6 +479,7 @@ function getGoalData(year, month) {
 // ============================================================
 function updateGoalData(year, month, parts) {
   if (!year || !month) return { success: false, error: '년/월이 지정되지 않았습니다.' };
+  parts = normalizeWasteParts_(parts);
   
   var sheet = getSheet('6. 월 목표');
   var lastRow = sheet.getLastRow();
@@ -548,7 +586,7 @@ function getResultData(year, month) {
     var rMonth = String(data[i][1]).trim();
     
     if (rYear === targetYear && rMonth === targetMonth) {
-      var name = String(data[i][3]).trim();   // D열: 부품명
+      var name = canonicalWastePartName_(data[i][3]); // D열: 부품명
       var gQty = Number(data[i][4]) || 0;     // E열: 목표수량
       var rQty = Number(data[i][7]) || 0;     // H열: 탈거수량(결과수량)
       
@@ -567,6 +605,7 @@ function getResultData(year, month) {
 function saveResultData(year, month, parts) {
   if (!year || !month) return { success: false, error: '년/월이 지정되지 않았습니다.' };
   if (!parts) return { success: false, error: '선택된 부품이 없습니다.' };
+  parts = normalizeWasteParts_(parts);
 
   var sheet = getSheet('6. 월 목표');
   var lastRow = sheet.getLastRow();
@@ -587,7 +626,7 @@ function saveResultData(year, month, parts) {
       var rYear = String(datesData[i][0]).trim();
       var rMonth = String(datesData[i][1]).trim();
       if (rYear === targetYear && rMonth === targetMonth) {
-        var partName = String(datesData[i][3]).trim();
+        var partName = canonicalWastePartName_(datesData[i][3]);
         existingMap[partName] = i + 3; 
       }
     }
@@ -666,7 +705,7 @@ function getGoalStatusData(year, month) {
     var rMonth = String(data[i][1]).trim();
     
     if (rYear === targetYear && rMonth === targetMonth) {
-      var name = String(data[i][3]).trim();   // D열: 부품명
+      var name = canonicalWastePartName_(data[i][3]); // D열: 부품명
       var gQty = Number(data[i][4]) || 0;     // E열: 목표수량
       var rQty = Number(data[i][7]) || 0;     // H열: 탈거수량(결과수량)
       var savingAmt = Number(data[i][11]) || 0; // L열: 절감금액 예상 (시트 수식 값 직접 읽기)
@@ -737,6 +776,7 @@ function uploadPhoto(base64Data, filename, vin) {
 function submitGoal(year, month, _, parts) {
   if (!year || !month) return { success: false, error: '년/월이 지정되지 않았습니다.' };
   if (!parts || parts.length === 0) return { success: false, error: '선택된 부품이 없습니다.' };
+  parts = normalizeWasteParts_(parts);
 
   var sheet = getSheet('6. 월 목표');
   var lastRow = sheet.getLastRow();

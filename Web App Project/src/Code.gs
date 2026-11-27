@@ -2594,14 +2594,12 @@ function exportAsDailyStatsExcel(sessionToken, targetDate, partFilter, repairTyp
     cleanupAsDailyExportFiles_(exportFolder);
     const blob = response.getBlob().setName(reportTitle);
     const exportFile = exportFolder.createFile(blob);
-    exportFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return {
       success: true,
       fileName: reportTitle,
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       fileId: exportFile.getId(),
-      fileUrl: exportFile.getUrl(),
-      downloadUrl: 'https://drive.google.com/uc?export=download&id=' + exportFile.getId()
+      base64: Utilities.base64Encode(blob.getBytes())
     };
   } catch (e) {
     return { success: false, message: e.toString() };

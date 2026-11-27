@@ -1281,7 +1281,7 @@
           alert((res && res.message) ? res.message : '엑셀 다운로드에 실패했습니다.');
           return;
         }
-        openAsDailyExcelDownload(res.downloadUrl, res.fileName, res.fileUrl);
+        openAsDailyExcelDownload(res.base64, res.fileName, res.mimeType);
       })
       .withFailureHandler(function (err) {
         setAsDailyDownloadButtonLoading(false);
@@ -1290,21 +1290,34 @@
       .exportAsDailyStatsExcel(currentSessionToken, targetDate, partFilter, repairTypeFilter);
   }
 
-  function openAsDailyExcelDownload(downloadUrl, fileName, fileUrl) {
-    const url = downloadUrl || fileUrl;
-    if (!url) {
-      alert('다운로드 링크를 생성하지 못했습니다.');
+  function openAsDailyExcelDownload(base64, fileName, mimeType) {
+    if (!base64) {
+      alert('다운로드할 파일 데이터를 받지 못했습니다.');
       return;
     }
 
-    const link = document.createElement('a');
-    link.href = url;
-    link.target = '_blank';
-    link.rel = 'noopener';
-    if (fileName) link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    let objectUrl = '';
+    let link = null;
+    try {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], {
+        type: mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      objectUrl = URL.createObjectURL(blob);
+      link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = fileName || 'AS일일실적.xlsx';
+      document.body.appendChild(link);
+      link.click();
+    } catch (err) {
+      alert('엑셀 다운로드 준비에 실패했습니다: ' + err.message);
+    } finally {
+      if (link && link.parentNode) link.parentNode.removeChild(link);
+      // Keep the URL alive long enough for the browser to start saving the file.
+      if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    }
   }
 
   function renderAsDailySummary(res) {
